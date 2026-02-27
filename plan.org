@@ -1,0 +1,56 @@
+#+title: looking-glass plan
+
+* Vision
+
+Build =looking-glass= as an Emacs Lisp optics library inspired by Haskell's
+=lens=, but optimized for Elisp conventions and data structures.
+
+This package should provide reusable optics primitives (lenses, prisms,
+traversals, composition) plus practical base optics, including regex-driven
+string editing optics. It should not include UI/modes/commands or
+domain-specific optics.
+
+* Milestones
+
+** DONE M1: Foundation
+CLOSED: [2026-02-27 Fri]
+
+- [X] Create package skeleton with lexical binding and package metadata.
+- [X] Define optic representation and constructor functions.
+- [X] Implement core combinators: =lg-compose= and =lg-id=.
+- [X] Implement core operations: =lg-view=, =lg-preview=, =lg-to-list-of=,
+  =lg-set=, =lg-over=, =lg-review=.
+
+** DONE M2: Base optics
+CLOSED: [2026-02-27 Fri]
+
+- [X] Lenses: =lg-car=, =lg-cdr=, =lg-nth=, =lg-plist=, =lg-gethash=.
+- [X] Traversals: =lg-each-list=, =lg-each-vector=.
+- [X] Prisms: =lg-just=, =lg-pred=.
+
+** DONE M3: String regex traversal
+CLOSED: [2026-02-27 Fri]
+
+- [X] Add =lg-regex= traversal over regex matches.
+- [X] Support editing full match (group 0) and capture groups.
+- [X] Ensure safe handling of zero-width matches.
+
+** DONE M4: Test suite
+CLOSED: [2026-02-27 Fri]
+
+- [X] Add ERT tests for core lens/prism/traversal behavior.
+- [X] Add composition tests.
+- [X] Add regex traversal tests (full match and capture group).
+
+** TODO M5: Hardening and ergonomics
+
+- [ ] Add richer traversal suite (=filtered= style, alist/plist traversals).
+- [ ] Add threading macros or helper macros for readability.
+- [ ] Add stronger error signaling and doc examples for edge cases.
+- [ ] Benchmark regex traversal and optimize allocation hotspots if needed.
+
+** TODO M6: Packaging polish
+
+- [ ] Add MELPA-friendly metadata and repository URL.
+- [ ] Add changelog and versioning strategy.
+- [ ] Add CI workflow to run ERT tests across Emacs versions.

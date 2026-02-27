@@ -1,0 +1,51 @@
+#+title: looking-glass
+
+looking-glass is an Emacs Lisp optics library inspired by Haskell's =lens=,
+adapted to idiomatic Elisp data structures.
+
+* Scope
+
+- Composable optics values and operations.
+- Lenses, prisms, traversals, and composition.
+- Basic optics for lists, cons cells, plists, hash tables, and vectors.
+- String editing traversal via regex matches and capture groups.
+
+Out of scope for this package:
+
+- Domain-specific optics (for JSON, org trees, etc.).
+- UI, modes, and interactive commands.
+
+* Quick start
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+
+;; Lens: update nested list element
+(lg-over (lg-compose (lg-nth 1) (lg-nth 0))
+         (lambda (x) (+ x 10))
+         '((a b) (1 2 3)))
+;; => ((a b) (11 2 3))
+
+;; Traversal: rewrite all matches in a string
+(lg-over (lg-regex "[0-9]+")
+         (lambda (n) (format "<%s>" n))
+         "x12y34")
+;; => "x<12>y<34>"
+
+;; Prism-style preview
+(lg-preview (lg-just) nil)  ;; => nil
+(lg-preview (lg-just) 42)   ;; => 42
+#+end_src
+
+* Core API
+
+- Constructors: =lg-lens=, =lg-prism=, =lg-traversal=, =lg-compose=.
+- Getters: =lg-view=, =lg-preview=, =lg-to-list-of=.
+- Updaters: =lg-set=, =lg-over=.
+- Prism review: =lg-review=.
+
+* Running tests
+
+#+begin_src sh
+emacs -Q --batch -L . -L test -l test/looking-glass-test.el -f ert-run-tests-batch-and-exit
+#+end_src
