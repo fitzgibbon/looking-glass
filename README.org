@@ -84,3 +84,28 @@ emacs -Q --batch -L . -L test -l test/looking-glass-test.el -f ert-run-tests-bat
              :repo "fitzgibbon/looking-glass")
   :demand t)
 #+end_src
+
+* JSON extension
+
+This repo also includes =looking-glass-json.el= for JSON-specific optics:
+
+- Boundary prisms: =lg-json-string=, =lg-json-string-alist=,
+  =lg-json-string-plist=, =lg-json-string-hash=.
+- Object/array optics: =lg-jkey=, =lg-jindex=, =lg-jvalues=,
+  indexed variants =lg-ijkey=, =lg-ijindex=, =lg-ijvalues=.
+- Path helper: =lg-jpath=.
+
+Example:
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-json)
+
+(setq json "{\"user\":{\"name\":\"ada\",\"age\":20}}")
+
+(lg-over (lg-compose (lg-json-string-alist)
+                     (lg-jpath "user" "name"))
+         #'upcase
+         json)
+;; => "{\"user\":{\"name\":\"ADA\",\"age\":20}}"
+#+end_src
