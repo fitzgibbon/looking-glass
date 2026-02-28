@@ -661,6 +661,16 @@ Use `lg-iwander' for explicit indexed profunctor style."
    :to-list-fn (lambda (source)
                  (list (funcall getter source)))))
 
+(defun lg-igetter (getter)
+  "Create an indexed getter from GETTER.
+
+GETTER returns a single (INDEX . VALUE) pair."
+  (lg-iwander
+   (lambda (step source app)
+     (lg--app-map app
+                  (lambda (_idx+value) source)
+                  (funcall step (funcall getter source))))))
+
 (defun lg-fold (collector)
   "Create a fold optic from COLLECTOR.
 
@@ -672,6 +682,24 @@ COLLECTOR is (SOURCE) -> list of values."
                  (car (funcall collector source)))
    :to-list-fn collector))
 
+(defun lg-ifold (collector)
+  "Create an indexed fold from COLLECTOR.
+
+COLLECTOR returns a list of (INDEX . VALUE) pairs."
+  (lg-iwander
+   (lambda (step source app)
+     (let* ((pure (lg-applicative-pure app))
+            (map2 (lg-applicative-map2 app))
+            (acc (funcall pure nil)))
+       (dolist (idx+value (funcall collector source))
+         (setq acc
+               (funcall map2
+                        (lambda (xs x)
+                          (append xs (list x)))
+                        acc
+                        (funcall step idx+value))))
+       (lg--app-map app (lambda (_updated) source) acc)))))
+
 (defun lg-setter (over)
   "Create a setter optic from OVER.
 
@@ -680,6 +708,23 @@ OVER is (FN SOURCE) -> SOURCE."
    :kind 'setter
    :cardinality 'many
    :over-fn over))
+
+(defun lg-isetter (iover)
+  "Create an indexed setter from IOVER.
+
+IOVER is (FN SOURCE) -> SOURCE where FN receives INDEX and VALUE."
+  (lg-iwander
+   (lambda (step source app)
+     (let ((pure (lg-applicative-pure app))
+           (map2 (lg-applicative-map2 app)))
+       (funcall map2
+                (lambda (_left right) right)
+                (funcall pure nil)
+                (funcall pure
+                         (funcall iover
+                                  (lambda (idx value)
+                                    (cdr (funcall step (cons idx value))))
+                                  source)))))))
 
 (defun lg-reviewer (review)
   "Create a review-only optic from REVIEW.
@@ -773,6 +818,51 @@ Return nil when no match exists, or (MATCH-START MATCH-END NEXT-START)."
               (setq scan next)))))
       acc)))
 
+(defun lg--iregex-traverse-builder (regexp group)
+  "Return indexed TRAVERSE function for REGEXP and GROUP.
+
+Indices are zero-based match ordinals for matches where GROUP is present."
+  (lambda (step source app)
+    (unless (stringp source)
+      (error "`lg-iregex' expects SOURCE to be a string"))
+    (let ((pure (lg-applicative-pure app))
+          (map2 (lg-applicative-map2 app))
+          (scan 0)
+          (cursor 0)
+          (match-index 0)
+          (acc nil))
+      (setq acc (funcall pure ""))
+      (while (< scan (length source))
+        (let ((step-info (lg--regex-step regexp source scan)))
+          (if (null step-info)
+              (progn
+                (setq acc (funcall map2 #'concat acc
+                                   (funcall pure (substring source cursor))))
+                (setq scan (length source)))
+            (pcase-let ((`(,_mstart ,mend ,next) step-info))
+              (let ((gstart (match-beginning group))
+                    (gend (match-end group)))
+                (if (or (null gstart) (null gend))
+                    (progn
+                      (setq acc (funcall map2 #'concat acc
+                                         (funcall pure (substring source cursor mend))))
+                      (setq cursor mend))
+                  (let ((idx match-index))
+                    (setq acc (funcall map2 #'concat acc
+                                       (funcall pure (substring source cursor gstart))))
+                    (setq acc
+                          (funcall map2 #'concat acc
+                                   (lg--app-map app #'cdr
+                                                (funcall step
+                                                         (cons idx
+                                                               (substring source gstart gend))))))
+                    (setq acc (funcall map2 #'concat acc
+                                       (funcall pure (substring source gend mend))))
+                    (setq cursor mend)
+                    (setq match-index (1+ match-index)))))
+              (setq scan next)))))
+      acc)))
+
 (defun lg-nth (index)
   "Lens focusing INDEX in a proper list."
   (unless (and (integerp index) (>= index 0))
@@ -798,13 +888,241 @@ Return nil when no match exists, or (MATCH-START MATCH-END NEXT-START)."
        copy))
    (lambda (_source) index)))
 
+(defun lg-string-nth (index)
+  "Lens focusing INDEX in a string."
+  (unless (and (integerp index) (>= index 0))
+    (error "INDEX must be a non-negative integer"))
+  (lg-lens
+   (lambda (source)
+     (aref source index))
+   (lambda (new source)
+     (let ((copy (copy-sequence source)))
+       (aset copy index new)
+       copy))))
+
+(defun lg-istring-nth (index)
+  "Indexed lens focusing INDEX in a string."
+  (unless (and (integerp index) (>= index 0))
+    (error "INDEX must be a non-negative integer"))
+  (lg-ilens
+   (lambda (source)
+     (aref source index))
+   (lambda (new source)
+     (let ((copy (copy-sequence source)))
+       (aset copy index new)
+       copy))
+   (lambda (_source) index)))
+
+(defun lg-bool-vector-nth (index)
+  "Lens focusing INDEX in a bool-vector."
+  (unless (and (integerp index) (>= index 0))
+    (error "INDEX must be a non-negative integer"))
+  (lg-lens
+   (lambda (source)
+     (aref source index))
+   (lambda (new source)
+     (let ((copy (copy-sequence source)))
+       (aset copy index new)
+       copy))))
+
+(defun lg-ibool-vector-nth (index)
+  "Indexed lens focusing INDEX in a bool-vector."
+  (unless (and (integerp index) (>= index 0))
+    (error "INDEX must be a non-negative integer"))
+  (lg-ilens
+   (lambda (source)
+     (aref source index))
+   (lambda (new source)
+     (let ((copy (copy-sequence source)))
+       (aset copy index new)
+       copy))
+   (lambda (_source) index)))
+
+(defun lg-char-table-char (char)
+  "Lens focusing CHAR in a char-table."
+  (lg-lens
+   (lambda (source)
+     (aref source char))
+   (lambda (new source)
+     (let ((copy (copy-sequence source)))
+       (aset copy char new)
+       copy))))
+
+(defun lg-ichar-table-char (char)
+  "Indexed lens focusing CHAR in a char-table."
+  (lg-ilens
+   (lambda (source)
+     (aref source char))
+   (lambda (new source)
+     (let ((copy (copy-sequence source)))
+       (aset copy char new)
+       copy))
+   (lambda (_source) char)))
+
+(defun lg--alist-match-p (key cell test)
+  "Return non-nil when CELL key matches KEY under TEST."
+  (and (consp cell)
+       (funcall (or test #'equal) key (car cell))))
+
+(defun lg--alist-get (key source test)
+  "Return value for first KEY match in SOURCE under TEST."
+  (let ((found nil)
+        (value nil))
+    (while (and source (not found))
+      (let ((cell (car source)))
+        (when (lg--alist-match-p key cell test)
+          (setq value (cdr cell))
+          (setq found t)))
+      (setq source (cdr source)))
+    value))
+
+(defun lg-alist (key &optional test)
+  "Lens focusing first KEY match in an alist.
+
+When KEY is not present, setting inserts it at the front."
+  (lg-lens
+   (lambda (source)
+     (lg--alist-get key source test))
+   (lambda (new source)
+     (let ((out nil)
+           (done nil))
+       (dolist (cell source)
+         (if (and (not done) (lg--alist-match-p key cell test))
+             (progn
+               (push (cons key new) out)
+               (setq done t))
+           (push cell out)))
+       (unless done
+         (push (cons key new) out))
+       (nreverse out)))))
+
+(defun lg-ialist (key &optional test)
+  "Indexed lens focusing first KEY match in an alist.
+
+Index for the focus is KEY."
+  (lg-ilens
+   (lambda (source)
+     (lg--alist-get key source test))
+   (lambda (new source)
+     (let ((out nil)
+           (done nil))
+       (dolist (cell source)
+         (if (and (not done) (lg--alist-match-p key cell test))
+             (progn
+               (push (cons key new) out)
+               (setq done t))
+           (push cell out)))
+       (unless done
+         (push (cons key new) out))
+       (nreverse out)))
+   (lambda (_source) key)))
+
+(defun lg-alist-values (key &optional test)
+  "Traversal over all values whose key matches KEY in an alist."
+  (lg-wander
+   (lambda (step source app)
+     (let* ((pure (lg-applicative-pure app))
+            (map2 (lg-applicative-map2 app))
+            (acc (funcall pure nil)))
+       (dolist (cell source acc)
+         (if (lg--alist-match-p key cell test)
+             (setq acc
+                   (funcall map2
+                            (lambda (cells value)
+                              (append cells (list (cons (car cell) value))))
+                            acc
+                            (funcall step (cdr cell))))
+           (setq acc
+                 (funcall map2
+                          (lambda (cells c) (append cells (list c)))
+                          acc
+                          (funcall pure cell)))))))))
+
+(defun lg-ialist-values (key &optional test)
+  "Indexed traversal over all values whose key matches KEY in an alist.
+
+Index for each focus is KEY."
+  (lg-iwander
+   (lambda (step source app)
+     (let* ((pure (lg-applicative-pure app))
+            (map2 (lg-applicative-map2 app))
+            (acc (funcall pure nil)))
+       (dolist (cell source acc)
+         (if (lg--alist-match-p key cell test)
+             (setq acc
+                   (funcall map2
+                            (lambda (cells idx+value)
+                              (append cells (list (cons (car cell) (cdr idx+value)))))
+                            acc
+                            (funcall step (cons key (cdr cell)))))
+           (setq acc
+                 (funcall map2
+                          (lambda (cells c) (append cells (list c)))
+                          acc
+                          (funcall pure cell)))))))))
+
+(defun lg-struct-slot (getter setter &optional slot-id)
+  "Build a struct-slot optic from GETTER and SETTER.
+
+Use generated cl-defstruct accessors in GETTER/SETTER.  When SLOT-ID is
+non-nil, return an indexed lens whose index is SLOT-ID."
+  (if slot-id
+      (lg-ilens getter setter (lambda (_source) slot-id))
+    (lg-lens getter setter)))
+
+(defun lg-tree-leaves (&optional pred)
+  "Traversal over tree leaves.
+
+Leaves are non-cons values.  When PRED is non-nil, only matching leaves are
+focused."
+  (lg-wander
+   (lambda (step source app)
+     (let ((pure (lg-applicative-pure app))
+           (map2 (lg-applicative-map2 app)))
+       (cl-labels ((walk (node)
+                     (if (consp node)
+                         (funcall map2 #'cons (walk (car node)) (walk (cdr node)))
+                       (if (or (null pred) (funcall pred node))
+                           (funcall step node)
+                         (funcall pure node)))))
+         (walk source))))))
+
+(defun lg-itree-leaves (&optional pred)
+  "Indexed traversal over tree leaves.
+
+Indices are paths as lists of symbols `car' and `cdr' from root to leaf."
+  (lg-iwander
+   (lambda (step source app)
+     (let ((pure (lg-applicative-pure app))
+           (map2 (lg-applicative-map2 app)))
+       (cl-labels ((walk (node path)
+                     (if (consp node)
+                         (funcall map2
+                                  #'cons
+                                  (walk (car node) (append path '(car)))
+                                  (walk (cdr node) (append path '(cdr))))
+                       (if (or (null pred) (funcall pred node))
+                           (funcall step (cons path node))
+                         (funcall pure node)))))
+         (walk source nil))))))
+
 (defconst lg-car
   (lg-lens #'car (lambda (new source) (cons new (cdr source))))
   "Lens focusing the `car' of a cons cell.")
 
+(defconst lg-icar
+  (lg-ilens #'car (lambda (new source) (cons new (cdr source)))
+            (lambda (_source) 'car))
+  "Indexed lens focusing the `car' of a cons cell.")
+
 (defconst lg-cdr
   (lg-lens #'cdr (lambda (new source) (cons (car source) new)))
   "Lens focusing the `cdr' of a cons cell.")
+
+(defconst lg-icdr
+  (lg-ilens #'cdr (lambda (new source) (cons (car source) new))
+            (lambda (_source) 'cdr))
+  "Indexed lens focusing the `cdr' of a cons cell.")
 
 (defun lg-gethash (key &optional test)
   "Lens focusing KEY in a hash table.
@@ -822,6 +1140,24 @@ When TEST is non-nil, newly copied tables use that equality test."
        (puthash key new table)
        table))))
 
+(defun lg-igethash (key &optional test)
+  "Indexed lens focusing KEY in a hash table.
+
+The index for the focus is KEY.  When TEST is non-nil, newly copied tables use
+that equality test."
+  (lg-ilens
+   (lambda (source)
+     (gethash key source))
+   (lambda (new source)
+     (let ((table (copy-hash-table source)))
+       (when test
+         (let ((rehydrated (make-hash-table :test test)))
+           (maphash (lambda (k v) (puthash k v rehydrated)) table)
+           (setq table rehydrated)))
+       (puthash key new table)
+       table))
+   (lambda (_source) key)))
+
 (defun lg-plist (prop)
   "Lens focusing PROP in a plist."
   (lg-lens
@@ -831,6 +1167,19 @@ When TEST is non-nil, newly copied tables use that equality test."
      (let ((copy (copy-sequence source)))
        (plist-put copy prop new)
        copy))))
+
+(defun lg-iplist (prop)
+  "Indexed lens focusing PROP in a plist.
+
+The index for the focus is PROP."
+  (lg-ilens
+   (lambda (source)
+     (plist-get source prop))
+   (lambda (new source)
+     (let ((copy (copy-sequence source)))
+       (plist-put copy prop new)
+       copy))
+   (lambda (_source) prop)))
 
 (defun lg-each-list ()
   "Traversal focusing each element in a list."
@@ -894,6 +1243,13 @@ Indices are zero-based integer positions."
 GROUP defaults to 0 (full match).  When GROUP is non-zero, only that capture
 group is focused and rewritten."
   (lg-wander (lg--regex-traverse-builder regexp (or group 0))))
+
+(defun lg-iregex (regexp &optional group)
+  "Indexed traversal over REGEXP matches in strings.
+
+GROUP defaults to 0 (full match).  When GROUP is non-zero, only that capture
+group is focused and rewritten.  Indices are zero-based match ordinals."
+  (lg-iwander (lg--iregex-traverse-builder regexp (or group 0))))
 
 (lg--register-default-kinds)
 

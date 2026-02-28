@@ -50,7 +50,8 @@ Out of scope for this package:
 * Core API
 
 - Constructors: =lg-lens=, =lg-ilens=, =lg-prism=, =lg-traversal=,
-  =lg-itraversal=, =lg-wander=, =lg-iwander=, =lg-compose=.
+  =lg-itraversal=, =lg-filtered=, =lg-ifiltered=, =lg-wander=,
+  =lg-iwander=, =lg-compose=.
 - Getters: =lg-view=, =lg-preview=, =lg-to-list-of=, =lg-ito-list-of=.
 - Updaters: =lg-set=, =lg-over=, =lg-iover=.
 - Prism review: =lg-review=.
