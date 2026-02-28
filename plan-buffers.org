@@ -1,0 +1,88 @@
+#+title: Plan: looking-glass-buffer
+
+* Goal
+
+Create a new package, =looking-glass-buffer=, that adds optics for viewing and
+manipulating Emacs buffers while staying consistent with the core
+=looking-glass= API and style.
+
+* Scope
+
+- In scope:
+  - Buffer-focused optics primitives (lens/traversal/prism-style where useful).
+  - Safe read/update operations over buffer text and metadata.
+  - Indexed variants where index semantics are clear and stable.
+  - Tests and docs for all public entry points.
+- Out of scope (initial version):
+  - Interactive commands/UI.
+  - Major-mode specific optics.
+  - Cross-buffer project navigation features.
+
+* Proposed Public API (v0.1.0)
+
+- Region/content optics:
+  - =lg-buffer-string= (prism between buffer and full text snapshot).
+  - =lg-buffer-region (beg end)= (lens over a fixed region string).
+  - =lg-buffer-lines= (traversal over lines, preserving separators).
+  - =lg-buffer-matches (regexp &optional subgroup)= (traversal over regex hits).
+- Metadata optics:
+  - =lg-buffer-name= (lens over =buffer-name=).
+  - =lg-buffer-modified-p= (lens over modified flag).
+  - =lg-buffer-point= (lens over point location).
+  - =lg-buffer-mark= (lens over mark location or nil).
+- Indexed variants:
+  - =lg-ibuffer-lines= (index = line number).
+  - =lg-ibuffer-matches= (index = match ordinal or start position).
+
+* Design Decisions
+
+- Primary source type is a live buffer object; support current buffer only as a
+  convenience wrapper, not as implicit global state inside optics.
+- Preserve buffer narrowing/restrictions by default; provide explicit options for
+  widening where needed.
+- Mutations must avoid moving point/mark unless the optic documents it; use
+  =save-excursion= and =save-restriction= internally.
+- Keep semantics predictable for read-only buffers: signal clear errors on write.
+- Ensure operations are deterministic with multibyte text and line endings.
+
+* Implementation Plan
+
+1. Package scaffolding
+   - Add =looking-glass-buffer.el= with headers, requires, and =provide=.
+   - Add =looking-glass-buffer-pkg.el= metadata and dependency on
+     =looking-glass=.
+2. Core helpers
+   - Internal helpers for validating buffer inputs and executing edits safely.
+   - Utilities for region replacement, line boundary discovery, and match walks.
+3. Public optics
+   - Implement region/content optics first, then metadata optics, then indexed
+     traversals.
+   - Keep behavior aligned with existing =looking-glass-json= conventions for
+     errors and immutable-style return values where relevant.
+4. Test suite
+   - Add =test/looking-glass-buffer-test.el= with focused unit tests per optic.
+   - Cover edge cases: empty buffers, narrowing, read-only, multibyte, final
+     newline handling, and overlapping regex constraints.
+5. Documentation
+   - Update =README.org= with a new "Buffer extension" section and examples.
+   - Document caveats around point/mark stability and mutation semantics.
+
+* Testing Strategy
+
+- Run existing test suite plus new buffer tests in batch Emacs.
+- Add composition tests showing buffer optics combined with core optics.
+- Add regression tests for off-by-one indexing and line/match boundary behavior.
+
+* Acceptance Criteria
+
+- New package loads with =(require 'looking-glass-buffer)=.
+- All public optics have docstrings and tests.
+- Buffer updates are correct and do not unexpectedly alter point/mark.
+- README includes usage examples for at least one lens and one traversal.
+- Full test run passes locally.
+
+* Rollout Notes
+
+- Start at version =0.1.0= for =looking-glass-buffer=.
+- Keep the initial API small and composable; defer niche optics to follow-up
+  releases based on usage feedback.

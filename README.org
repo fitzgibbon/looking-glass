@@ -117,3 +117,29 @@ Example:
                  (lg/path-json "user" "name"))
      #'upcase)
 #+end_src
+
+* Buffer extension
+
+This repo also includes =looking-glass-buffer.el= for buffer optics:
+
+- Content optics: =lg-buffer-string=, =lg-buffer-region=,
+  =lg-buffer-lines=, =lg-buffer-matches=.
+- Metadata optics: =lg-buffer-name=, =lg-buffer-modified-p=,
+  =lg-buffer-point=, =lg-buffer-mark=.
+- Indexed traversals: =lg-ibuffer-lines=, =lg-ibuffer-matches=.
+
+Example:
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-buffer)
+
+(with-temp-buffer
+  (insert "x=10\ny=20\n")
+  (let ((buf (current-buffer)))
+    (lg-over (lg-buffer-matches "[0-9]+")
+             (lambda (n) (number-to-string (* 2 (string-to-number n))))
+             buf)
+    (buffer-string)))
+;; => "x=20\ny=40\n"
+#+end_src
