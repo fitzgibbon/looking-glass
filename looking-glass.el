@@ -623,6 +623,22 @@ Use `lg-iwander' for explicit indexed profunctor style."
    :to-list-fn (lambda (source)
                  (mapcar #'cdr (funcall ito-list source)))))
 
+(defun lg-filtered (pred)
+  "Traversal that keeps values where PRED returns non-nil."
+  (lg-wander
+   (lambda (step source app)
+     (if (funcall pred source)
+         (funcall step source)
+       (funcall (lg-applicative-pure app) source)))))
+
+(defun lg-ifiltered (pred)
+  "Indexed traversal that keeps focuses where PRED INDEX VALUE is non-nil."
+  (lg-iwander
+   (lambda (step idx+value app)
+     (if (funcall pred (car idx+value) (cdr idx+value))
+         (funcall step idx+value)
+       (funcall (lg-applicative-pure app) idx+value)))))
+
 (defun lg-iso (forward backward)
   "Create an iso optic from FORWARD and BACKWARD."
   (lg--make-optic

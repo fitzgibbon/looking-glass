@@ -62,6 +62,15 @@
     (should (functionp (lg-optic-rep optic)))
     (should (functionp (lg-optic-irep optic)))))
 
+(ert-deftest lg-ifiltered-replaces-index-when-guard ()
+  (let* ((source '(10 20 30 40 50))
+         (pairs (lg-ito-list-of (lg-ieach-list) source))
+         (optic (lg-compose (lg-each-list)
+                            (lg-ifiltered (lambda (idx _value)
+                                            (= 0 (% idx 2)))))))
+    (should (equal (lg-to-list-of optic pairs)
+                   '((0 . 10) (2 . 30) (4 . 50))))))
+
 (ert-deftest lg-indexed-traversal-collect-and-over ()
   (let ((optic (lg-ieach-list)))
     (should (equal (lg-kind optic) 'indexed-traversal))
