@@ -62,3 +62,25 @@ Out of scope for this package:
 #+begin_src sh
 emacs -Q --batch -L . -L test -l test/looking-glass-test.el -f ert-run-tests-batch-and-exit
 #+end_src
+
+* Installation with use-package
+
+** Emacs 29+ (built-in vc support)
+
+#+begin_src emacs-lisp
+(use-package looking-glass
+  :vc (:url "https://github.com/fitzgibbon/looking-glass"
+       :rev :newest)
+  :demand t)
+#+end_src
+
+** straight.el
+
+#+begin_src emacs-lisp
+(use-package looking-glass
+  :straight (looking-glass
+             :type git
+             :host github
+             :repo "fitzgibbon/looking-glass")
+  :demand t)
+#+end_src

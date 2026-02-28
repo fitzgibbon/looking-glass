@@ -4,7 +4,7 @@
 ;; Version: 0.4.0
 ;; Package-Requires: ((emacs "27.1") (cl-lib "0.6"))
 ;; Keywords: lisp, data, tools
-;; URL: https://example.invalid/looking-glass
+;; URL: https://github.com/fitzgibbon/looking-glass
 
 ;;; Commentary:
 
