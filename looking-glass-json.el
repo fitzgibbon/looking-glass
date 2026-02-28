@@ -57,7 +57,7 @@ OPTIONS is a plist forwarded to `json-parse-string', commonly using
 
 (defun lg-json-string-hash ()
   "Prism between JSON text and hash-table/vector decoded structures."
-  (lg-json-string :object-type 'hash-table :array-type 'vector))
+  (lg-json-string :object-type 'hash-table :array-type 'array))
 
 (defun lg-json--plist-p (value)
   "Return non-nil when VALUE looks like a plist object." 

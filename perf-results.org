@@ -1,0 +1,17 @@
+#+title: looking-glass performance baselines
+
+* Run metadata
+
+- Date: 2026-02-28
+- Command:
+  =emacs -Q --batch -L . -L test -l test/looking-glass-test.el -l test/looking-glass-json-test.el -f ert-run-tests-batch-and-exit=
+- Result: 31/31 tests passing
+
+* Baseline timings
+
+| Benchmark test id                                        | Runs | Total seconds | Avg ms/run | Notes                              |
+|----------------------------------------------------------+------+---------------+------------+------------------------------------|
+| =lg-perf-generated-nested-update-benchmark=             |   40 |      2.477396 |     61.935 | nested list 150 x 40              |
+| =lg-perf-generated-indexed-benchmark=                   |   30 |      1.514214 |     50.474 | nested list 120 x 30              |
+| =lg-json-perf-generated-array-traversal-benchmark=      |   10 |      0.947862 |     94.786 | vector 0..1999                    |
+| =lg-json-perf-generated-boundary-and-path-benchmark=    |   15 |      0.006351 |      0.423 | JSON parse/transform/serialize    |

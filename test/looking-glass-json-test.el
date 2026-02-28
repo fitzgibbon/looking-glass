@@ -3,8 +3,34 @@
 ;;; Code:
 
 (require 'ert)
+(require 'benchmark)
 (require 'looking-glass)
 (require 'looking-glass-json)
+
+(defun lg-json-test--generated-users (count)
+  "Generate a JSON-ready user list with COUNT entries."
+  (let ((out nil)
+        (i 0))
+    (while (< i count)
+      (push `(("id" . ,i)
+              ("name" . ,(format "user-%d" i))
+              ("active" . ,(if (zerop (% i 2)) t :json-false)))
+            out)
+      (setq i (1+ i)))
+    (nreverse out)))
+
+(defun lg-json-test--generated-user-hash-vector (count)
+  "Generate a vector of COUNT user hash tables." 
+  (let ((vec (make-vector count nil))
+        (i 0))
+    (while (< i count)
+      (let ((user (make-hash-table :test #'equal)))
+        (puthash "id" i user)
+        (puthash "name" (format "user-%d" i) user)
+        (puthash "active" (if (zerop (% i 2)) t :json-false) user)
+        (aset vec i user))
+      (setq i (1+ i)))
+    vec))
 
 (ert-deftest lg-json-string-boundary-prism ()
   (let* ((optic (lg-json-string-alist))
@@ -72,6 +98,37 @@
                        (append '(0))
                        (append '(9)))
                  '(1 2 3 0 9))))
+
+(ert-deftest lg-json-perf-generated-boundary-and-path-benchmark ()
+  (let* ((users (lg-json-test--generated-user-hash-vector 600))
+         (doc (make-hash-table :test #'equal))
+         (_ (puthash "users" users doc))
+         (json (json-serialize doc :false-object :json-false))
+         (optic (lg-compose (lg-json-string-hash)
+                            (lg/path-json "users" 320 "name")))
+         (elapsed (car (benchmark-run 15
+                        (lg-over optic #'upcase json))))
+         (updated (lg-over optic #'upcase json))
+         (decoded (lg-view (lg-json-string-hash) updated)))
+    (should (equal (lg-view (lg-compose (lg-jkey "users")
+                                        (lg-jindex 320)
+                                        (lg-jkey "name"))
+                            decoded)
+                   "USER-320"))
+    (message "[perf] json-boundary-path 15 runs: %.6fs" elapsed)))
+
+(ert-deftest lg-json-perf-generated-array-traversal-benchmark ()
+  (let* ((arr (vconcat (number-sequence 0 1999)))
+         (elapsed (car (benchmark-run 10
+                        (lg-over (lg-jvalues)
+                                 (lambda (v) (+ v 3))
+                                 arr))))
+         (updated (lg-over (lg-jvalues)
+                           (lambda (v) (+ v 3))
+                           arr)))
+    (should (= (aref updated 0) 3))
+    (should (= (aref updated 1999) 2002))
+    (message "[perf] json-array-traversal 10 runs: %.6fs" elapsed)))
 
 (provide 'looking-glass-json-test)
 

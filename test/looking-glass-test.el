@@ -3,9 +3,24 @@
 ;;; Code:
 
 (require 'ert)
+(require 'benchmark)
 (require 'looking-glass)
 
 (cl-defstruct lg-test-person name age)
+
+(defun lg-test--generated-nested-list (outer inner)
+  "Generate OUTER lists each containing INNER integers."
+  (let ((out nil)
+        (i 0))
+    (while (< i outer)
+      (let ((row nil)
+            (j 0))
+        (while (< j inner)
+          (push (+ (* i inner) j) row)
+          (setq j (1+ j)))
+        (push (nreverse row) out))
+      (setq i (1+ i)))
+    (nreverse out)))
 
 (ert-deftest lg-lens-basic-view-set-over ()
   (let ((optic (lg-nth 1)))
@@ -220,6 +235,32 @@
     (should (equal (lg-kind optic) 'review))
     (should (equal (lg-review optic 7) '(:wrapped 7)))
     (should-error (lg-over optic #'identity 1))))
+
+(ert-deftest lg-perf-generated-nested-update-benchmark ()
+  (let* ((data (lg-test--generated-nested-list 150 40))
+         (optic (lg-compose (lg-each-list) (lg-each-list)))
+         (elapsed (car (benchmark-run 40
+                        (lg-over optic (lambda (v) (1+ v)) data))))
+         (updated (lg-over optic (lambda (v) (1+ v)) data)))
+    (should (= (length updated) 150))
+    (should (= (length (car updated)) 40))
+    (message "[perf] nested-update 40 runs: %.6fs" elapsed)))
+
+(ert-deftest lg-perf-generated-indexed-benchmark ()
+  (let* ((data (lg-test--generated-nested-list 120 30))
+         (optic (lg-compose (lg-ieach-list) (lg-ieach-list)))
+         (elapsed (car (benchmark-run 30
+                        (lg-iover optic
+                                  (lambda (idx v)
+                                    (if (equal idx '(0 . 1)) (* 2 v) v))
+                                  data))))
+         (updated (lg-iover optic
+                            (lambda (idx v)
+                              (if (equal idx '(0 . 1)) (* 2 v) v))
+                            data)))
+    (should (= (cadar updated) 2))
+    (should (= (length updated) 120))
+    (message "[perf] indexed-update 30 runs: %.6fs" elapsed)))
 
 (provide 'looking-glass-test)
 
