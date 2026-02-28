@@ -19,6 +19,7 @@
 
 (require 'cl-lib)
 (require 'json)
+(require 'subr-x)
 (require 'looking-glass)
 
 (defun lg-json-string (&rest options)
@@ -271,6 +272,43 @@ Each segment must be:
                     (t (error "Unsupported JSON path segment: %S" segment))))
                  segments)))
     (apply #'lg-compose optics)))
+
+(defmacro lg/path-json (&rest segments)
+  "Macro sugar for `lg-jpath'."
+  `(lg-jpath ,@segments))
+
+(defmacro lg^ (source optic)
+  "View SOURCE through OPTIC." 
+  `(lg-view ,optic ,source))
+
+(defmacro lg= (source optic value)
+  "Set VALUE through OPTIC in SOURCE." 
+  `(lg-set ,optic ,value ,source))
+
+(defmacro lg~ (source optic fn)
+  "Apply FN through OPTIC in SOURCE." 
+  `(lg-over ,optic ,fn ,source))
+
+(cl-defmacro lg~i (source optic (index value) &rest body)
+  "Apply indexed BODY through OPTIC in SOURCE.
+
+INDEX and VALUE are bound per focused element."
+  `(lg-iover ,optic
+             (lambda (,index ,value)
+               ,@body)
+             ,source))
+
+(defmacro lg-> (x &rest forms)
+  "Thread X through FORMS as first argument.
+
+This is a thin alias over `thread-first'."
+  `(thread-first ,x ,@forms))
+
+(defmacro lg->> (x &rest forms)
+  "Thread X through FORMS as last argument.
+
+This is a thin alias over `thread-last'."
+  `(thread-last ,x ,@forms))
 
 (provide 'looking-glass-json)
 

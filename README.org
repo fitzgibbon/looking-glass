@@ -94,6 +94,8 @@ This repo also includes =looking-glass-json.el= for JSON-specific optics:
 - Object/array optics: =lg-jkey=, =lg-jindex=, =lg-jvalues=,
   indexed variants =lg-ijkey=, =lg-ijindex=, =lg-ijvalues=.
 - Path helper: =lg-jpath=.
+- Macro sugar: =lg/path-json=, =lg^=, =lg==, =lg~=, =lg~i=, =lg->=,
+  =lg->>=.
 
 Example:
 
@@ -108,4 +110,10 @@ Example:
          #'upcase
          json)
 ;; => "{\"user\":{\"name\":\"ADA\",\"age\":20}}"
+
+;; Macro sugar
+(lg~ json
+     (lg-compose (lg-json-string-alist)
+                 (lg/path-json "user" "name"))
+     #'upcase)
 #+end_src

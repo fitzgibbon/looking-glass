@@ -49,6 +49,30 @@
   (should (equal (lg-ito-list-of (lg-ijvalues) [7 8])
                  '((0 . 7) (1 . 8)))))
 
+(ert-deftest lg-json-macro-sugar-forms ()
+  (let ((source '(("user" . (("name" . "ada") ("age" . 20))))))
+    (should (equal (lg^ source (lg/path-json "user" "name"))
+                   "ada"))
+    (should (equal (lg= source (lg/path-json "user" "age") 21)
+                   '(("user" . (("name" . "ada") ("age" . 21))))))
+    (should (equal (lg~ source (lg/path-json "user" "name") #'upcase)
+                   '(("user" . (("name" . "ADA") ("age" . 20))))))))
+
+(ert-deftest lg-json-macro-sugar-indexed-and-threading ()
+  (should (equal (lg~i '(10 20 30)
+                       (lg-ieach-list)
+                       (idx value)
+                       (+ value idx))
+                 '(10 21 32)))
+  (should (equal (lg->> '(1 2 3)
+                        (lg-over (lg-each-list) (lambda (v) (* 2 v)))
+                        (lg-over (lg-each-list) (lambda (v) (+ v 1))))
+                 '(3 5 7)))
+  (should (equal (lg-> '(1 2 3)
+                       (append '(0))
+                       (append '(9)))
+                 '(1 2 3 0 9))))
+
 (provide 'looking-glass-json-test)
 
 ;;; looking-glass-json-test.el ends here
