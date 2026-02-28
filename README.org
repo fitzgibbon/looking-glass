@@ -3,10 +3,14 @@
 looking-glass is an Emacs Lisp optics library inspired by Haskell's =lens=,
 adapted to idiomatic Elisp data structures.
 
+The runtime is profunctor-based for both unindexed and indexed optics.
+Composed optics are represented as composed =rep=/=irep= functions, and public
+operations evaluate those representations directly.
+
 * Scope
 
 - Composable optics values and operations.
-- Lenses, prisms, traversals, and composition.
+- Lenses, prisms, traversals, indexed traversals, and composition.
 - Basic optics for lists, cons cells, plists, hash tables, and vectors.
 - String editing traversal via regex matches and capture groups.
 
@@ -35,14 +39,22 @@ Out of scope for this package:
 ;; Prism-style preview
 (lg-preview (lg-just) nil)  ;; => nil
 (lg-preview (lg-just) 42)   ;; => 42
+
+;; Indexed traversal: index-aware updates
+(lg-iover (lg-ieach-list)
+          (lambda (i v) (if (= i 0) (upcase v) v))
+          '("a" "b" "c"))
+;; => ("A" "b" "c")
 #+end_src
 
 * Core API
 
-- Constructors: =lg-lens=, =lg-prism=, =lg-traversal=, =lg-compose=.
-- Getters: =lg-view=, =lg-preview=, =lg-to-list-of=.
-- Updaters: =lg-set=, =lg-over=.
+- Constructors: =lg-lens=, =lg-ilens=, =lg-prism=, =lg-traversal=,
+  =lg-itraversal=, =lg-wander=, =lg-iwander=, =lg-compose=.
+- Getters: =lg-view=, =lg-preview=, =lg-to-list-of=, =lg-ito-list-of=.
+- Updaters: =lg-set=, =lg-over=, =lg-iover=.
 - Prism review: =lg-review=.
+- Inspectors: =lg-kind=, =lg-capabilities=, =lg-can-p=.
 
 * Running tests
 

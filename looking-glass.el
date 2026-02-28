@@ -1,152 +1,477 @@
-;;; looking-glass.el --- Composable optics for Emacs Lisp -*- lexical-binding: t; -*-
+;;; looking-glass.el --- Compiled profunctor optics for Emacs Lisp -*- lexical-binding: t; -*-
 
 ;; Author: looking-glass contributors
-;; Version: 0.1.0
+;; Version: 0.4.0
 ;; Package-Requires: ((emacs "27.1") (cl-lib "0.6"))
 ;; Keywords: lisp, data, tools
 ;; URL: https://example.invalid/looking-glass
 
 ;;; Commentary:
 
-;; looking-glass provides a small, composable optics library inspired by
-;; Haskell's lens ecosystem, adapted to common Emacs Lisp data structures.
+;; looking-glass uses profunctor encodings for both unindexed and indexed optics.
 ;;
-;; Optics are represented as first-class values and can be composed with
-;; `lg-compose'.
+;; - unindexed optics store REP: (PDICT PAB) -> PASBT
+;; - indexed optics additionally store IREP: (IPDICT PAB) -> PASBT
 ;;
-;; Core operations:
-;; - `lg-view': extract a focused value (single-focus optics)
-;; - `lg-preview': extract the first focus (partial/multi-focus optics)
-;; - `lg-to-list-of': collect all foci
-;; - `lg-set': replace focused values
-;; - `lg-over': transform focused values
-;; - `lg-review': build a source value from a prism
+;; Public operations evaluate optics through REP/IREP directly.
 
 ;;; Code:
 
 (require 'cl-lib)
 
+(cl-defstruct (lg-applicative
+               (:constructor lg--app-create))
+  pure
+  map2)
+
+(cl-defstruct (lg-profunctor
+               (:constructor lg--profunctor-create))
+  dimap
+  first
+  right
+  wander)
+
+(cl-defstruct (lg-indexed-profunctor
+               (:constructor lg--iprofunctor-create))
+  dimap
+  first
+  right
+  wander)
+
 (cl-defstruct (lg-optic
                (:constructor lg--optic-create))
-  "Internal representation of an optic.
-
-KIND is one of `lens', `prism', or `traversal'.
-OVER is a function (FN SOURCE) -> SOURCE.
-TO-LIST is a function (SOURCE) -> list of foci.
-REVIEW is optional and is used by prisms to construct SOURCE from a focus."
   kind
-  over
-  to-list
-  review)
+  cardinality
+  caps
+  indexed
+  rep
+  irep
+  review-fn
+  over-fn
+  iover-fn
+  set-fn
+  view-fn
+  preview-fn
+  to-list-fn
+  ito-list-fn
+  plan)
+
+(defvar lg--kind-registry (make-hash-table :test #'eq)
+  "Registry of kind metadata.")
+
+(defconst lg--either-left :left)
+(defconst lg--either-right :right)
+
+(defconst lg--app-identity
+  (lg--app-create
+   :pure (lambda (x) x)
+   :map2 (lambda (f x y)
+           (funcall f x y))))
+
+(defconst lg--app-list-const
+  (lg--app-create
+   :pure (lambda (_x) nil)
+   :map2 (lambda (_f xs ys)
+           (append xs ys))))
+
+(defconst lg--app-first-const
+  (lg--app-create
+   :pure (lambda (_x) nil)
+   :map2 (lambda (_f x y)
+           (or x y))))
+
+(defun lg--app-map (app fn ax)
+  "Map FN over applicative value AX under APP." 
+  (funcall (lg-applicative-map2 app)
+           (lambda (_ignore x) (funcall fn x))
+           (funcall (lg-applicative-pure app) nil)
+           ax))
+
+(defconst lg--profunctor-fn
+  (lg--profunctor-create
+   :dimap (lambda (pre post pab)
+            (lambda (source)
+              (funcall post
+                       (funcall pab
+                                (funcall pre source)))))
+   :first (lambda (pab)
+            (lambda (pair)
+              (cons (funcall pab (car pair))
+                    (cdr pair))))
+   :right (lambda (pab)
+            (lambda (either)
+              (if (eq (car either) lg--either-right)
+                  (cons lg--either-right
+                        (funcall pab (cdr either)))
+                either)))
+   :wander (lambda (traverse pab)
+             (lambda (source)
+               (funcall traverse pab source lg--app-identity)))))
+
+(defconst lg--profunctor-forget-list
+  (lg--profunctor-create
+   :dimap (lambda (pre _post pab)
+            (lambda (source)
+              (funcall pab
+                       (funcall pre source))))
+   :first (lambda (pab)
+            (lambda (pair)
+              (funcall pab (car pair))))
+   :right (lambda (pab)
+            (lambda (either)
+              (if (eq (car either) lg--either-right)
+                  (funcall pab (cdr either))
+                nil)))
+   :wander (lambda (traverse pab)
+             (lambda (source)
+               (funcall traverse pab source lg--app-list-const)))))
+
+(defconst lg--profunctor-forget-first
+  (lg--profunctor-create
+   :dimap (lambda (pre _post pab)
+            (lambda (source)
+              (funcall pab (funcall pre source))))
+   :first (lambda (pab)
+            (lambda (pair)
+              (funcall pab (car pair))))
+   :right (lambda (pab)
+            (lambda (either)
+              (if (eq (car either) lg--either-right)
+                  (funcall pab (cdr either))
+                nil)))
+   :wander (lambda (traverse pab)
+             (lambda (source)
+               (funcall traverse pab source lg--app-first-const)))))
+
+(defconst lg--iprofunctor-fn
+  (lg--iprofunctor-create
+   :dimap (lambda (pre post pab)
+            (lambda (source)
+              (funcall post
+                       (funcall pab
+                                (funcall pre source)))))
+   :first (lambda (pab)
+            (lambda (pair)
+              (cons (funcall pab (car pair))
+                    (cdr pair))))
+   :right (lambda (pab)
+            (lambda (either)
+              (if (eq (car either) lg--either-right)
+                  (cons lg--either-right
+                        (funcall pab (cdr either)))
+                either)))
+   :wander (lambda (traverse pab)
+             (lambda (source)
+               (funcall traverse pab source lg--app-identity)))))
+
+(defconst lg--iprofunctor-forget-list
+  (lg--iprofunctor-create
+   :dimap (lambda (pre _post pab)
+            (lambda (source)
+              (funcall pab (funcall pre source))))
+   :first (lambda (pab)
+            (lambda (pair)
+              (funcall pab (car pair))))
+   :right (lambda (pab)
+            (lambda (either)
+              (if (eq (car either) lg--either-right)
+                  (funcall pab (cdr either))
+                nil)))
+   :wander (lambda (traverse pab)
+             (lambda (source)
+               (funcall traverse pab source lg--app-list-const)))))
 
 (defun lg--ensure-optic (value)
   "Signal an error unless VALUE is an `lg-optic'."
   (unless (lg-optic-p value)
     (signal 'wrong-type-argument (list 'lg-optic-p value))))
 
-(defun lg-lens (getter setter)
-  "Build a lens from GETTER and SETTER.
+(defun lg-register-kind (kind caps &optional cardinality)
+  "Register KIND with CAPS and optional CARDINALITY."
+  (puthash kind (list :caps (copy-sequence caps)
+                      :cardinality cardinality)
+           lg--kind-registry)
+  kind)
 
-GETTER is a function of one argument SOURCE returning the focus.
-SETTER is a function of two arguments FOCUS and SOURCE returning updated SOURCE."
-  (lg--optic-create
-   :kind 'lens
-   :to-list (lambda (source)
-              (list (funcall getter source)))
-   :over (lambda (fn source)
-           (funcall setter
-                    (funcall fn (funcall getter source))
-                    source))))
+(defun lg--register-default-kinds ()
+  "Populate built-in kind metadata."
+  (clrhash lg--kind-registry)
+  (lg-register-kind 'iso '(view preview collect over set review) 'single)
+  (lg-register-kind 'lens '(view preview collect over set) 'single)
+  (lg-register-kind 'prism '(preview collect over review) 'optional)
+  (lg-register-kind 'traversal '(preview collect over set) 'many)
+  (lg-register-kind 'getter '(view preview collect) 'single)
+  (lg-register-kind 'fold '(preview collect) 'many)
+  (lg-register-kind 'setter '(over set) 'many)
+  (lg-register-kind 'review '(review) 'single)
+  (lg-register-kind 'indexed-lens '(view preview collect over set iover icollect) 'single)
+  (lg-register-kind 'indexed-traversal '(preview collect over set iover icollect) 'many)
+  t)
 
-(defun lg-prism (matcher reviewer)
-  "Build a prism from MATCHER and REVIEWER.
+(defun lg--compose-cardinality (outer inner)
+  "Compute composed cardinality from OUTER and INNER cardinalities."
+  (pcase outer
+    ('single inner)
+    ('optional (pcase inner
+                 ('single 'optional)
+                 ('optional 'optional)
+                 (_ 'many)))
+    (_ 'many)))
 
-MATCHER is a function of one argument SOURCE.  It should return nil for no
-match, or a cons cell (t . FOCUS) for match.
+(defun lg--combine-index (outer inner)
+  "Combine OUTER and INNER index values for composed indexed optics."
+  (cond
+   ((and outer inner) (cons outer inner))
+   (inner inner)
+   (t outer)))
 
-REVIEWER is a function of one argument FOCUS that constructs SOURCE."
-  (lg--optic-create
-   :kind 'prism
-   :to-list (lambda (source)
-              (let ((match (funcall matcher source)))
-                (if (and (consp match) (car match))
-                    (list (cdr match))
-                  nil)))
-   :over (lambda (fn source)
-           (let ((match (funcall matcher source)))
-             (if (and (consp match) (car match))
-                 (funcall reviewer (funcall fn (cdr match)))
-               source)))
-   :review reviewer))
+(defun lg--infer-kind (caps cardinality indexed)
+  "Infer optic kind from CAPS, CARDINALITY, and INDEXED metadata."
+  (let* ((has (lambda (cap) (memq cap caps)))
+         (base
+          (cond
+           ((and (funcall has 'review)
+                 (funcall has 'view)
+                 (funcall has 'over)
+                 (eq cardinality 'single))
+            'iso)
+           ((and (funcall has 'view)
+                 (funcall has 'over)
+                 (eq cardinality 'single))
+            'lens)
+           ((and (funcall has 'review)
+                 (funcall has 'preview)
+                 (funcall has 'over)
+                 (eq cardinality 'optional))
+            'prism)
+           ((and (funcall has 'over)
+                 (funcall has 'collect)
+                 (eq cardinality 'many))
+            'traversal)
+           ((and (funcall has 'view)
+                 (funcall has 'collect)
+                 (not (funcall has 'over))
+                 (eq cardinality 'single))
+            'getter)
+           ((and (funcall has 'collect)
+                 (not (funcall has 'over)))
+            'fold)
+           ((and (funcall has 'over)
+                 (not (funcall has 'collect)))
+            'setter)
+           ((funcall has 'review)
+            'review)
+           (t 'optic))))
+    (if (and indexed
+             (memq base '(lens traversal fold getter)))
+        (intern (format "indexed-%s" base))
+      base)))
 
-(defun lg-traversal (over to-list)
-  "Build a traversal from OVER and TO-LIST.
+(defun lg--compute-caps (optic)
+  "Compute capability list from compiled slots in OPTIC."
+  (let ((caps nil))
+    (when (and (lg-optic-rep optic)
+               (eq (lg-optic-cardinality optic) 'single))
+      (push 'view caps))
+    (when (lg-optic-rep optic) (push 'preview caps))
+    (when (lg-optic-rep optic) (push 'collect caps))
+    (when (lg-optic-rep optic) (push 'over caps))
+    (when (lg-optic-rep optic) (push 'set caps))
+    (when (lg-optic-review-fn optic) (push 'review caps))
+    (when (lg-optic-irep optic) (push 'iover caps))
+    (when (lg-optic-irep optic) (push 'icollect caps))
+    (nreverse caps)))
 
-OVER is a function (FN SOURCE) -> SOURCE.
-TO-LIST is a function (SOURCE) -> list of foci."
-  (lg--optic-create
-   :kind 'traversal
-   :over over
-   :to-list to-list))
+(defun lg--lift-rep-to-irep (rep)
+  "Lift unindexed REP into indexed representation with nil indices."
+  (when rep
+    (lambda (ipdict pab)
+      (funcall rep
+               lg--profunctor-fn
+               (lambda (value)
+                 (let ((result (funcall pab (cons nil value))))
+                   (if (eq ipdict lg--iprofunctor-fn)
+                       (cdr result)
+                     result)))))))
+
+(defun lg--effective-irep (optic)
+  "Return indexed profunctor representation for OPTIC."
+  (or (lg-optic-irep optic)
+      (lg--lift-rep-to-irep (lg-optic-rep optic))))
+
+(defun lg--finalize-optic (optic)
+  "Fill derived metadata for OPTIC."
+  (unless (lg-optic-irep optic)
+    (setf (lg-optic-irep optic)
+          (and (lg-optic-indexed optic)
+               (lg--lift-rep-to-irep (lg-optic-rep optic)))))
+  (let ((caps (lg--compute-caps optic)))
+    (setf (lg-optic-caps optic) caps)
+    (setf (lg-optic-kind optic)
+          (lg--infer-kind caps
+                          (lg-optic-cardinality optic)
+                          (lg-optic-indexed optic))))
+  optic)
+
+(defun lg--make-optic (&rest args)
+  "Create and finalize a raw optic from ARGS for `lg--optic-create'."
+  (lg--finalize-optic (apply #'lg--optic-create args)))
+
+(defun lg--compose-rep (outer inner)
+  "Compose unindexed profunctor representations for OUTER then INNER."
+  (let ((outer-rep (lg-optic-rep outer))
+        (inner-rep (lg-optic-rep inner)))
+    (when (and outer-rep inner-rep)
+      (lambda (profunctor pab)
+        (funcall outer-rep
+                 profunctor
+                 (funcall inner-rep profunctor pab))))))
+
+(defun lg--compose-irep (outer inner)
+  "Compose indexed profunctor representations for OUTER then INNER.
+
+Composition combines indices as (OUTER . INNER)." 
+  (let ((outer-irep (lg--effective-irep outer))
+        (inner-irep (lg--effective-irep inner)))
+    (when (and outer-irep inner-irep)
+      (lambda (iprofunctor pab)
+        (funcall outer-irep
+                 iprofunctor
+                (lambda (outer-idx+focus)
+                  (let ((outer-index (car outer-idx+focus))
+                        (outer-focus (cdr outer-idx+focus)))
+                    (let ((inner-result
+                           (funcall
+                            (funcall inner-irep
+                                     iprofunctor
+                                     (lambda (inner-idx+value)
+                                       (funcall pab
+                                                (cons (lg--combine-index
+                                                       outer-index
+                                                       (car inner-idx+value))
+                                                      (cdr inner-idx+value)))))
+                            outer-focus)))
+                      (if (eq iprofunctor lg--iprofunctor-fn)
+                          (cons outer-index inner-result)
+                        inner-result)))))))))
+
+(defun lg--compose-review (outer inner)
+  "Compose review path for OUTER then INNER." 
+  (let ((outer-review (lg-optic-review-fn outer))
+        (inner-review (lg-optic-review-fn inner)))
+    (when (and outer-review inner-review)
+      (lambda (value)
+        (funcall outer-review (funcall inner-review value))))))
+
+(defun lg--compose2 (outer inner)
+  "Compile composition OUTER then INNER into one optic."
+  (let* ((cardinality (lg--compose-cardinality
+                       (lg-optic-cardinality outer)
+                       (lg-optic-cardinality inner)))
+         (indexed-chain (or (lg-optic-indexed outer)
+                            (lg-optic-indexed inner)))
+         (rep (lg--compose-rep outer inner))
+         (irep (and indexed-chain (lg--compose-irep outer inner)))
+         (optic
+          (lg--optic-create
+           :kind 'optic
+           :cardinality cardinality
+           :indexed indexed-chain
+           :rep rep
+            :irep irep
+            :review-fn (lg--compose-review outer inner)
+           :plan (append (or (lg-optic-plan outer)
+                             (list (lg-optic-kind outer)))
+                         (or (lg-optic-plan inner)
+                             (list (lg-optic-kind inner)))))))
+    (lg--finalize-optic optic)))
 
 (defun lg-compose (&rest optics)
   "Compose OPTICS left-to-right.
 
-When OPTICS is empty, return `lg-id'."
+Composition combines profunctor representations and compiles operation paths."
   (if (null optics)
       (lg-id)
     (progn
       (mapc #'lg--ensure-optic optics)
-      (let ((composed (car optics)))
+      (let ((compiled (car optics)))
         (dolist (optic (cdr optics))
-          (setq composed
-                (let ((outer composed)
-                      (inner optic))
-                  (lg--optic-create
-                   :kind (if (eq (lg-optic-kind outer) 'lens)
-                             (lg-optic-kind inner)
-                           'traversal)
-                   :over (lambda (fn source)
-                           (funcall (lg-optic-over outer)
-                                    (lambda (focus)
-                                      (funcall (lg-optic-over inner) fn focus))
-                                    source))
-                   :to-list (lambda (source)
-                              (cl-mapcan (lambda (focus)
-                                           (funcall (lg-optic-to-list inner)
-                                                    focus))
-                                         (funcall (lg-optic-to-list outer)
-                                                  source)))
-                   :review (when (and (lg-optic-review outer)
-                                      (lg-optic-review inner))
-                             (lambda (value)
-                               (funcall (lg-optic-review outer)
-                                        (funcall (lg-optic-review inner)
-                                                 value))))))))
-        composed))))
+          (setq compiled (lg--compose2 compiled optic)))
+        compiled))))
 
-(defun lg-id ()
-  "Identity lens that focuses SOURCE itself."
-  (lg-lens #'identity (lambda (new _source) new)))
+(defun lg-kind (optic)
+  "Return inferred kind symbol for OPTIC."
+  (lg--ensure-optic optic)
+  (lg-optic-kind optic))
+
+(defun lg-capabilities (optic)
+  "Return supported capability symbols for OPTIC."
+  (lg--ensure-optic optic)
+  (copy-sequence (lg-optic-caps optic)))
+
+(defun lg-can-p (optic capability)
+  "Return non-nil when OPTIC supports CAPABILITY."
+  (lg--ensure-optic optic)
+  (memq capability (lg-optic-caps optic)))
 
 (defun lg-over (optic fn source)
-  "Apply FN to each focus of OPTIC in SOURCE."
+  "Apply FN to every focus selected by OPTIC in SOURCE."
   (lg--ensure-optic optic)
-  (funcall (lg-optic-over optic) fn source))
+  (let ((rep (lg-optic-rep optic)))
+    (unless rep
+      (error "Optic kind %S cannot perform `lg-over'" (lg-kind optic)))
+    (funcall (funcall rep lg--profunctor-fn fn) source)))
+
+(defun lg-iover (optic fn source)
+  "Apply indexed FN to every focus selected by OPTIC in SOURCE.
+
+FN receives INDEX and VALUE."
+  (lg--ensure-optic optic)
+  (let ((irep (lg--effective-irep optic)))
+    (unless irep
+      (error "Optic kind %S cannot perform `lg-iover'" (lg-kind optic)))
+    (funcall (funcall irep lg--iprofunctor-fn
+                      (lambda (idx+value)
+                        (cons (car idx+value)
+                              (funcall fn (car idx+value)
+                                       (cdr idx+value)))))
+             source)))
 
 (defun lg-set (optic value source)
-  "Replace each focus of OPTIC in SOURCE with VALUE."
+  "Set every focus selected by OPTIC in SOURCE to VALUE."
   (lg-over optic (lambda (_focus) value) source))
 
 (defun lg-to-list-of (optic source)
-  "Collect all foci of OPTIC in SOURCE."
+  "Collect all focuses selected by OPTIC in SOURCE."
   (lg--ensure-optic optic)
-  (funcall (lg-optic-to-list optic) source))
+  (let ((rep (lg-optic-rep optic)))
+    (unless rep
+      (error "Optic kind %S cannot perform `lg-to-list-of'" (lg-kind optic)))
+    (funcall (funcall rep lg--profunctor-forget-list
+                      (lambda (v) (list v)))
+             source)))
+
+(defun lg-ito-list-of (optic source)
+  "Collect all indexed focuses selected by OPTIC in SOURCE.
+
+Return a list of (INDEX . VALUE) pairs."
+  (lg--ensure-optic optic)
+  (let ((irep (lg--effective-irep optic)))
+    (unless irep
+      (error "Optic kind %S cannot perform `lg-ito-list-of'" (lg-kind optic)))
+    (let ((raw (funcall (funcall irep lg--iprofunctor-forget-list
+                                 (lambda (idx+value) (list idx+value)))
+                        source)))
+      (mapcar (lambda (entry)
+                (if (and (consp entry)
+                         (null (cdr entry))
+                         (consp (car entry)))
+                    (car entry)
+                  entry))
+              raw))))
 
 (defun lg-view (optic source)
-  "Extract a single focus from OPTIC in SOURCE.
-
-Signal an error when OPTIC does not focus exactly one value."
+  "Extract exactly one focus from OPTIC in SOURCE."
   (let ((foci (lg-to-list-of optic source)))
     (pcase foci
       (`(,value) value)
@@ -155,17 +480,282 @@ Signal an error when OPTIC does not focus exactly one value."
 
 (defun lg-preview (optic source)
   "Extract the first focus from OPTIC in SOURCE, or nil."
-  (car (lg-to-list-of optic source)))
+  (lg--ensure-optic optic)
+  (let ((rep (lg-optic-rep optic)))
+    (unless rep
+      (error "Optic kind %S cannot perform `lg-preview'" (lg-kind optic)))
+    (funcall (funcall rep lg--profunctor-forget-first
+                      (lambda (value) value))
+             source)))
 
 (defun lg-review (optic value)
-  "Construct a source value by reviewing VALUE with OPTIC.
-
-This works for prisms and compositions with review-capable optics."
+  "Construct a source value by reviewing VALUE with OPTIC."
   (lg--ensure-optic optic)
-  (let ((reviewer (lg-optic-review optic)))
-    (unless reviewer
-      (error "Optic does not support `lg-review'"))
-    (funcall reviewer value)))
+  (let ((op (lg-optic-review-fn optic)))
+    (unless op
+      (error "Optic kind %S cannot perform `lg-review'" (lg-kind optic)))
+    (funcall op value)))
+
+(defun lg-lens (getter setter)
+  "Create a lens from GETTER and SETTER.
+
+GETTER is (SOURCE) -> FOCUS.
+SETTER is (FOCUS SOURCE) -> SOURCE."
+  (lg--make-optic
+   :kind 'lens
+   :cardinality 'single
+   :rep (lambda (pdict pab)
+          (let ((dimap (lg-profunctor-dimap pdict))
+                (first (lg-profunctor-first pdict)))
+            (funcall dimap
+                     (lambda (source)
+                       (cons (funcall getter source) source))
+                     (lambda (pair)
+                       (funcall setter (car pair) (cdr pair)))
+                     (funcall first pab))))))
+
+(defun lg-ilens (getter setter indexer)
+  "Create an indexed lens from GETTER, SETTER, and INDEXER.
+
+INDEXER is (SOURCE) -> INDEX."
+  (lg--make-optic
+   :kind 'indexed-lens
+   :cardinality 'single
+   :indexed t
+   :rep (lambda (pdict pab)
+          (let ((dimap (lg-profunctor-dimap pdict))
+                (first (lg-profunctor-first pdict)))
+            (funcall dimap
+                     (lambda (source)
+                       (cons (funcall getter source) source))
+                     (lambda (pair)
+                       (funcall setter (car pair) (cdr pair)))
+                     (funcall first pab))))
+   :irep (lambda (ipdict pab)
+           (let ((dimap (lg-indexed-profunctor-dimap ipdict))
+                 (first (lg-indexed-profunctor-first ipdict)))
+             (funcall dimap
+                      (lambda (source)
+                        (cons (cons (funcall indexer source)
+                                    (funcall getter source))
+                              source))
+                      (lambda (pair)
+                        (funcall setter (cdr (car pair)) (cdr pair)))
+                      (funcall first pab))))))
+
+(defun lg-prism (matcher reviewer)
+  "Create a prism from MATCHER and REVIEWER.
+
+MATCHER is (SOURCE) -> nil or a cons whose cdr is focus.
+REVIEWER is (FOCUS) -> SOURCE."
+  (lg--make-optic
+   :kind 'prism
+   :cardinality 'optional
+   :review-fn reviewer
+   :rep (lambda (pdict pab)
+          (let ((dimap (lg-profunctor-dimap pdict))
+                (right (lg-profunctor-right pdict)))
+            (funcall dimap
+                     (lambda (source)
+                       (let ((match (funcall matcher source)))
+                         (if (and (consp match) (car match))
+                             (cons lg--either-right (cdr match))
+                           (cons lg--either-left source))))
+                     (lambda (either)
+                       (if (eq (car either) lg--either-right)
+                           (funcall reviewer (cdr either))
+                         (cdr either)))
+                     (funcall right pab))))))
+
+(defun lg-wander (traverse)
+  "Create a traversal from TRAVERSE using profunctor `wander'.
+
+TRAVERSE is (STEP SOURCE APP) -> APP-RESULT where APP is an `lg-applicative'."
+  (lg--make-optic
+   :kind 'traversal
+   :cardinality 'many
+   :rep (lambda (pdict pab)
+          (funcall (lg-profunctor-wander pdict) traverse pab))))
+
+(defun lg-iwander (traverse)
+  "Create an indexed traversal from TRAVERSE using indexed profunctor `wander'.
+
+TRAVERSE is (STEP SOURCE APP) -> APP-RESULT where STEP takes one
+indexed pair (INDEX . VALUE) and returns an applicative indexed pair." 
+  (lg--make-optic
+   :kind 'indexed-traversal
+   :cardinality 'many
+   :indexed t
+   :rep (lambda (pdict pab)
+          (funcall (lg-profunctor-wander pdict)
+                   (lambda (step source app)
+                     (funcall traverse
+                              (lambda (idx+value)
+                                (lg--app-map app #'cdr (funcall step idx+value)))
+                              source app))
+                   pab))
+   :irep (lambda (ipdict pab)
+           (funcall (lg-indexed-profunctor-wander ipdict) traverse pab))))
+
+(defun lg-traversal (over to-list)
+  "Create a traversal from OVER and TO-LIST.
+
+This is an adapter constructor; use `lg-wander' for explicit profunctor style."
+  (lg--make-optic
+   :kind 'traversal
+   :cardinality 'many
+   :over-fn over
+   :to-list-fn to-list))
+
+(defun lg-itraversal (iover ito-list)
+  "Create an indexed traversal from IOVER and ITO-LIST.
+
+This is an adapter constructor.
+Use `lg-iwander' for explicit indexed profunctor style."
+  (lg--make-optic
+   :kind 'indexed-traversal
+   :cardinality 'many
+   :indexed t
+   :iover-fn iover
+   :ito-list-fn ito-list
+   :over-fn (lambda (fn source)
+              (funcall iover (lambda (_index value) (funcall fn value)) source))
+   :to-list-fn (lambda (source)
+                 (mapcar #'cdr (funcall ito-list source)))))
+
+(defun lg-iso (forward backward)
+  "Create an iso optic from FORWARD and BACKWARD."
+  (lg--make-optic
+   :kind 'iso
+   :cardinality 'single
+   :review-fn backward
+   :rep (lambda (pdict pab)
+          (funcall (lg-profunctor-dimap pdict)
+                   forward
+                   backward
+                   pab))))
+
+(defun lg-getter (getter)
+  "Create a getter optic from GETTER." 
+  (lg--make-optic
+   :kind 'getter
+   :cardinality 'single
+   :view-fn getter
+   :preview-fn getter
+   :to-list-fn (lambda (source)
+                 (list (funcall getter source)))))
+
+(defun lg-fold (collector)
+  "Create a fold optic from COLLECTOR.
+
+COLLECTOR is (SOURCE) -> list of values." 
+  (lg--make-optic
+   :kind 'fold
+   :cardinality 'many
+   :preview-fn (lambda (source)
+                 (car (funcall collector source)))
+   :to-list-fn collector))
+
+(defun lg-setter (over)
+  "Create a setter optic from OVER.
+
+OVER is (FN SOURCE) -> SOURCE." 
+  (lg--make-optic
+   :kind 'setter
+   :cardinality 'many
+   :over-fn over))
+
+(defun lg-reviewer (review)
+  "Create a review-only optic from REVIEW.
+
+REVIEW is (VALUE) -> SOURCE." 
+  (lg--make-optic
+   :kind 'review
+   :cardinality 'single
+   :review-fn review))
+
+(defun lg-id ()
+  "Identity optic."
+  (lg-iso #'identity #'identity))
+
+(defun lg--list-traverse (step source app)
+  "Traverse SOURCE list with STEP under APP applicative." 
+  (let ((pure (lg-applicative-pure app))
+        (map2 (lg-applicative-map2 app))
+        (acc nil))
+    (setq acc (funcall pure nil))
+    (dolist (value source acc)
+      (setq acc
+            (funcall map2
+                     (lambda (xs y)
+                       (append xs (list y)))
+                     acc
+                     (funcall step value))))))
+
+(defun lg--ilist-traverse (step source app)
+  "Indexed traversal for SOURCE list with indexed STEP under APP." 
+  (let ((pure (lg-applicative-pure app))
+        (map2 (lg-applicative-map2 app))
+        (acc nil)
+        (index 0))
+    (setq acc (funcall pure nil))
+    (dolist (value source acc)
+      (let ((idx index))
+        (setq acc
+              (funcall map2
+                       (lambda (xs idx+value)
+                         (append xs (list (cdr idx+value))))
+                       acc
+                       (funcall step (cons idx value)))))
+      (setq index (1+ index)))))
+
+(defun lg--regex-step (regexp string start)
+  "Return match information for REGEXP in STRING at START.
+
+Return nil when no match exists, or (MATCH-START MATCH-END NEXT-START)."
+  (when (string-match regexp string start)
+    (let* ((mstart (match-beginning 0))
+           (mend (match-end 0))
+           (next (if (= start mend)
+                     (min (1+ start) (length string))
+                   mend)))
+      (list mstart mend next))))
+
+(defun lg--regex-traverse-builder (regexp group)
+  "Return unindexed TRAVERSE function for REGEXP and GROUP." 
+  (lambda (step source app)
+    (unless (stringp source)
+      (error "`lg-regex' expects SOURCE to be a string"))
+    (let ((pure (lg-applicative-pure app))
+          (map2 (lg-applicative-map2 app))
+          (scan 0)
+          (cursor 0)
+          (acc nil))
+      (setq acc (funcall pure ""))
+      (while (< scan (length source))
+        (let ((step-info (lg--regex-step regexp source scan)))
+          (if (null step-info)
+              (progn
+                (setq acc (funcall map2 #'concat acc
+                                   (funcall pure (substring source cursor))))
+                (setq scan (length source)))
+            (pcase-let ((`(,_mstart ,mend ,next) step-info))
+              (let ((gstart (match-beginning group))
+                    (gend (match-end group)))
+                (if (or (null gstart) (null gend))
+                    (progn
+                      (setq acc (funcall map2 #'concat acc
+                                         (funcall pure (substring source cursor mend))))
+                      (setq cursor mend))
+                  (setq acc (funcall map2 #'concat acc
+                                     (funcall pure (substring source cursor gstart))))
+                  (setq acc (funcall map2 #'concat acc
+                                     (funcall step (substring source gstart gend))))
+                  (setq acc (funcall map2 #'concat acc
+                                     (funcall pure (substring source gend mend))))
+                  (setq cursor mend)))
+              (setq scan next)))))
+      acc)))
 
 (defun lg-nth (index)
   "Lens focusing INDEX in a proper list."
@@ -178,6 +768,19 @@ This works for prisms and compositions with review-capable optics."
      (let ((copy (copy-sequence source)))
        (setf (nth index copy) new)
        copy))))
+
+(defun lg-inth (index)
+  "Indexed lens focusing INDEX in a proper list."
+  (unless (and (integerp index) (>= index 0))
+    (error "INDEX must be a non-negative integer"))
+  (lg-ilens
+   (lambda (source)
+     (nth index source))
+   (lambda (new source)
+     (let ((copy (copy-sequence source)))
+       (setf (nth index copy) new)
+       copy))
+   (lambda (_source) index)))
 
 (defconst lg-car
   (lg-lens #'car (lambda (new source) (cons new (cdr source))))
@@ -215,22 +818,43 @@ When TEST is non-nil, newly copied tables use that equality test."
 
 (defun lg-each-list ()
   "Traversal focusing each element in a list."
-  (lg-traversal
-   (lambda (fn source)
-     (mapcar fn source))
-   (lambda (source)
-     (copy-sequence source))))
+  (lg-wander #'lg--list-traverse))
+
+(defun lg-ieach-list ()
+  "Indexed traversal focusing each element in a list.
+
+Indices are zero-based integer positions."
+  (lg-iwander #'lg--ilist-traverse))
 
 (defun lg-each-vector ()
   "Traversal focusing each element in a vector."
-  (lg-traversal
-   (lambda (fn source)
-     (let ((copy (copy-sequence source)))
-       (dotimes (i (length copy))
-         (aset copy i (funcall fn (aref copy i))))
-       copy))
-   (lambda (source)
-     (append source nil))))
+  (lg-compose
+   (lg-iso (lambda (vec) (append vec nil))
+           (lambda (lst) (vconcat lst)))
+   (lg-each-list)))
+
+(defun lg-ieach-vector ()
+  "Indexed traversal focusing each element in a vector.
+
+Indices are zero-based integer positions."
+  (lg-iwander
+   (lambda (step source app)
+     (let ((pure (lg-applicative-pure app))
+           (map2 (lg-applicative-map2 app))
+           (acc nil)
+           (i 0)
+           (len (length source)))
+       (setq acc (funcall pure nil))
+       (while (< i len)
+         (let ((idx i))
+           (setq acc
+                 (funcall map2
+                          (lambda (xs idx+value)
+                            (append xs (list (cdr idx+value))))
+                          acc
+                          (funcall step (cons idx (aref source i))))))
+         (setq i (1+ i)))
+       (lg--app-map app #'vconcat acc)))))
 
 (defun lg-just ()
   "Prism that matches non-nil values and reviews to themselves."
@@ -248,74 +872,14 @@ When TEST is non-nil, newly copied tables use that equality test."
        (cons t source)))
    #'identity))
 
-(defun lg--regex-step (regexp string start)
-  "Return match information for REGEXP in STRING at START.
-
-The return value is nil when no match exists, or a list
-(MATCH-START MATCH-END NEXT-START)."
-  (when (string-match regexp string start)
-    (let* ((mstart (match-beginning 0))
-           (mend (match-end 0))
-           (next (if (= start mend)
-                     (min (1+ start) (length string))
-                   mend)))
-      (list mstart mend next))))
-
-(defun lg--regex-to-list (regexp group source)
-  "Collect regex foci for REGEXP and GROUP in SOURCE."
-  (let ((cursor 0)
-        (out nil))
-    (while (< cursor (length source))
-      (let ((step (lg--regex-step regexp source cursor)))
-        (if (null step)
-            (setq cursor (length source))
-          (pcase-let ((`(,_mstart _mend ,next) step))
-            (when (and (match-beginning group)
-                       (match-end group))
-              (push (match-string group source) out))
-            (setq cursor next)))))
-    (nreverse out)))
-
-(defun lg--regex-over (regexp group fn source)
-  "Apply FN to regex foci for REGEXP and GROUP in SOURCE."
-  (let ((scan 0)
-        (cursor 0)
-        (pieces nil))
-    (while (< scan (length source))
-      (let ((step (lg--regex-step regexp source scan)))
-        (if (null step)
-            (progn
-              (push (substring source cursor) pieces)
-              (setq scan (length source)))
-          (pcase-let ((`(,_mstart ,mend ,next) step))
-            (let ((gstart (match-beginning group))
-                  (gend (match-end group)))
-              (if (or (null gstart) (null gend))
-                  (progn
-                    (push (substring source cursor mend) pieces)
-                    (setq cursor mend))
-                (push (substring source cursor gstart) pieces)
-                (push (funcall fn (substring source gstart gend)) pieces)
-                (push (substring source gend mend) pieces)
-                (setq cursor mend)))
-            (setq scan next)))))
-    (apply #'concat (nreverse pieces))))
-
 (defun lg-regex (regexp &optional group)
   "Traversal over REGEXP matches in strings.
 
 GROUP defaults to 0 (full match).  When GROUP is non-zero, only that capture
 group is focused and rewritten."
-  (let ((target-group (or group 0)))
-    (lg-traversal
-     (lambda (fn source)
-       (unless (stringp source)
-         (error "`lg-regex' expects SOURCE to be a string"))
-       (lg--regex-over regexp target-group fn source))
-     (lambda (source)
-       (unless (stringp source)
-         (error "`lg-regex' expects SOURCE to be a string"))
-       (lg--regex-to-list regexp target-group source)))))
+  (lg-wander (lg--regex-traverse-builder regexp (or group 0))))
+
+(lg--register-default-kinds)
 
 (provide 'looking-glass)
 
