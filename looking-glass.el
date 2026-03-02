@@ -420,7 +420,113 @@ IAFB is called as (IAFB index focus)."
                 entry))
             alist)))
 
-(defun lg--affine-traversal (preview-fn set-fn)
+(defun lg--plist-remove-first (plist key testfn)
+  "Return PLIST with first KEY removed using TESTFN."
+  (let ((rest plist)
+        (result nil)
+        (removed nil))
+    (while rest
+      (let ((candidate (car rest))
+            (candidate-value (cadr rest)))
+        (if (and (not removed) (funcall testfn candidate key))
+            (setq removed t)
+          (setq result (append result (list candidate candidate-value)))))
+      (setq rest (cddr rest)))
+    result))
+
+(defun lg--plist-set-first-or-add (plist key value testfn)
+  "Return PLIST with first KEY set to VALUE, adding when missing."
+  (let ((found (car (lg--plist-present-and-value plist key testfn))))
+    (if found
+        (lg--plist-update-first plist key value testfn)
+      (append plist (list key value)))))
+
+(defun lg--alist-remove-first (alist key testfn)
+  "Return ALIST with first KEY removed using TESTFN."
+  (let ((result nil)
+        (removed nil))
+    (dolist (entry alist (nreverse result))
+      (if (and (not removed) (funcall testfn (car entry) key))
+          (setq removed t)
+        (push entry result)))))
+
+(defun lg--alist-set-first-or-add (alist key value testfn)
+  "Return ALIST with first KEY set to VALUE, adding when missing."
+  (let ((found (car (lg--alist-present-and-value alist key testfn))))
+    (if found
+        (lg--alist-update-first alist key value testfn)
+      (append alist (list (cons key value))))))
+
+(defun lg--alist-p (value)
+  "Return non-nil when VALUE is an alist."
+  (and (listp value)
+       (cl-every #'consp value)))
+
+(defun lg--keyed-kind (source)
+  "Classify SOURCE as one supported keyed container kind."
+  (cond
+   ((hash-table-p source) 'hash-table)
+   ((lg--alist-p source) 'alist)
+   ((and (listp source) (zerop (% (length source) 2))) 'plist)
+   (t nil)))
+
+(defun lg--keyed-present-and-value (source key &optional testfn)
+  "Return (FOUND . VALUE) for KEY in SOURCE.
+SOURCE can be plist, alist, or hash table."
+  (pcase (lg--keyed-kind source)
+    ('plist (lg--plist-present-and-value source key (or testfn #'eq)))
+    ('alist (lg--alist-present-and-value source key (or testfn #'equal)))
+    ('hash-table
+     (let* ((missing (make-symbol "lg-missing"))
+            (value (gethash key source missing)))
+       (if (eq value missing)
+           (cons nil nil)
+         (cons t value))))
+    (_ (error "Unsupported keyed source type: %S" source))))
+
+(defun lg--keyed-set-existing (source key value &optional testfn)
+  "Set existing KEY to VALUE in SOURCE, preserving missing keys."
+  (pcase (lg--keyed-kind source)
+    ('plist
+     (if (car (lg--plist-present-and-value source key (or testfn #'eq)))
+         (lg--plist-update-first source key value (or testfn #'eq))
+       source))
+    ('alist
+     (if (car (lg--alist-present-and-value source key (or testfn #'equal)))
+         (lg--alist-update-first source key value (or testfn #'equal))
+       source))
+    ('hash-table
+     (let* ((missing (make-symbol "lg-missing"))
+            (current (gethash key source missing)))
+       (if (eq current missing)
+           source
+         (let ((copy (copy-hash-table source)))
+           (puthash key value copy)
+           copy))))
+    (_ (error "Unsupported keyed source type: %S" source))))
+
+(defun lg--keyed-set-presence (source key present value &optional testfn)
+  "Set presence state for KEY in SOURCE.
+When PRESENT is non-nil, insert or update KEY with VALUE.
+When PRESENT is nil, remove KEY if present."
+  (pcase (lg--keyed-kind source)
+    ('plist
+     (if present
+         (lg--plist-set-first-or-add source key value (or testfn #'eq))
+       (lg--plist-remove-first source key (or testfn #'eq))))
+    ('alist
+     (if present
+         (lg--alist-set-first-or-add source key value (or testfn #'equal))
+       (lg--alist-remove-first source key (or testfn #'equal))))
+    ('hash-table
+     (let ((copy (copy-hash-table source)))
+       (if present
+           (puthash key value copy)
+         (remhash key copy))
+       copy))
+    (_ (error "Unsupported keyed source type: %S" source))))
+
+(defun lg-affine-traversal (preview-fn set-fn)
   "Build an affine traversal from PREVIEW-FN and SET-FN.
 PREVIEW-FN must return (FOUND . FOCUS).
 SET-FN is called as (SET-FN source new-focus)."
@@ -432,11 +538,45 @@ SET-FN is called as (SET-FN source new-focus)."
             (pure (lg-applicative-pure applicative))
             (fmap (lg-applicative-fmap applicative)))
        (if found
-           (funcall fmap
-                    (lambda (new-focus)
-                      (funcall set-fn source new-focus))
-                    (funcall afb focus))
-         (funcall pure source))))))
+            (funcall fmap
+                     (lambda (new-focus)
+                       (funcall set-fn source new-focus))
+                     (funcall afb focus))
+          (funcall pure source))))))
+
+(defalias 'lg--affine-traversal #'lg-affine-traversal)
+
+(defun lg-ix (key &optional testfn)
+  "Affine traversal focusing existing KEY in keyed SOURCE.
+SOURCE can be plist, alist, or hash table.
+TESTFN applies to plist/alist key comparisons."
+  (lg-affine-traversal
+   (lambda (source)
+     (lg--keyed-present-and-value source key testfn))
+   (lambda (source new-focus)
+     (lg--keyed-set-existing source key new-focus testfn))))
+
+(defun lg-at (key &optional testfn)
+  "Lens focusing presence and value of KEY in keyed SOURCE.
+The focus shape is (FOUND . VALUE). Setting to (nil . _) removes KEY.
+Setting to (t . VALUE) inserts or updates KEY.
+SOURCE can be plist, alist, or hash table.
+TESTFN applies to plist/alist key comparisons."
+  (lg-lens
+   (lambda (source)
+     (lg--keyed-present-and-value source key testfn))
+   (lambda (source state)
+     (unless (consp state)
+       (error "lg-at expects state of shape (FOUND . VALUE)"))
+     (lg--keyed-set-presence source key (car state) (cdr state) testfn))))
+
+(defun lg-hash-key-traversal (key)
+  "Affine traversal focusing existing KEY in a hash table."
+  (lg-ix key))
+
+(defun lg-hash-key-at (key)
+  "Lens focusing presence and value for KEY in a hash table."
+  (lg-at key))
 
 (defun lg-over (optic fn source)
   "Apply FN over OPTIC focus in SOURCE."
@@ -470,6 +610,20 @@ FN is called as (FN index focus)."
   "Left-fold OPTIC focuses in SOURCE with FN and INITIAL."
   (cl-reduce fn (lg-to-list-of optic source) :initial-value initial))
 
+(defun lg-first-of (optic source)
+  "Return first focus of OPTIC in SOURCE, or nil when absent."
+  (cdr (lg-preview-result optic source)))
+
+(defun lg-last-of (optic source)
+  "Return last focus of OPTIC in SOURCE, or nil when absent."
+  (let ((focuses (lg-to-list-of optic source)))
+    (when focuses
+      (car (last focuses)))))
+
+(defun lg-find-of (optic predicate source)
+  "Return first focus matching PREDICATE for OPTIC in SOURCE."
+  (cl-find-if predicate (lg-to-list-of optic source)))
+
 (defun lg-ifoldl-of (optic fn initial source)
   "Left-fold indexed OPTIC focuses in SOURCE with FN and INITIAL.
 FN is called as (FN acc index focus)."
@@ -478,17 +632,76 @@ FN is called as (FN acc index focus)."
              (lg-ito-list-of optic source)
              :initial-value initial))
 
+(defun lg-ifirst-of (optic source)
+  "Return first indexed focus of OPTIC in SOURCE, or nil when absent."
+  (cdr (lg-ipreview-result optic source)))
+
+(defun lg-ilast-of (optic source)
+  "Return last indexed focus of OPTIC in SOURCE, or nil when absent."
+  (let ((focuses (lg-ito-list-of optic source)))
+    (when focuses
+      (car (last focuses)))))
+
+(defun lg-ifind-of (optic predicate source)
+  "Return first indexed focus matching PREDICATE in SOURCE.
+PREDICATE is called as (PREDICATE index focus)."
+  (cl-find-if (lambda (indexed-focus)
+                (funcall predicate (car indexed-focus) (cdr indexed-focus)))
+              (lg-ito-list-of optic source)))
+
+(defun lg-imap-of (optic fn source)
+  "Indexed map over OPTIC in SOURCE using FN.
+FN is called as (FN index focus)."
+  (lg-iover optic fn source))
+
 (defun lg-any-of (optic predicate source)
   "Return non-nil when any OPTIC focus in SOURCE satisfies PREDICATE."
   (cl-some predicate (lg-to-list-of optic source)))
+
+(defun lg-none-of (optic predicate source)
+  "Return non-nil when no OPTIC focus in SOURCE satisfies PREDICATE."
+  (not (lg-any-of optic predicate source)))
 
 (defun lg-all-of (optic predicate source)
   "Return non-nil when all OPTIC focuses in SOURCE satisfy PREDICATE."
   (cl-every predicate (lg-to-list-of optic source)))
 
+(defun lg-iany-of (optic predicate source)
+  "Return non-nil when any indexed focus satisfies PREDICATE.
+PREDICATE is called as (PREDICATE index focus)."
+  (cl-some (lambda (indexed-focus)
+             (funcall predicate (car indexed-focus) (cdr indexed-focus)))
+           (lg-ito-list-of optic source)))
+
+(defun lg-inone-of (optic predicate source)
+  "Return non-nil when no indexed focus satisfies PREDICATE."
+  (not (lg-iany-of optic predicate source)))
+
+(defun lg-iall-of (optic predicate source)
+  "Return non-nil when all indexed focuses satisfy PREDICATE.
+PREDICATE is called as (PREDICATE index focus)."
+  (cl-every (lambda (indexed-focus)
+              (funcall predicate (car indexed-focus) (cdr indexed-focus)))
+            (lg-ito-list-of optic source)))
+
 (defun lg-count-of (optic source)
   "Count focused values of OPTIC in SOURCE."
   (length (lg-to-list-of optic source)))
+
+(defun lg-icount-of (optic source)
+  "Count focused values of indexed OPTIC in SOURCE."
+  (length (lg-ito-list-of optic source)))
+
+(defun lg-unto (builder)
+  "Create a review optic from BUILDER.
+BUILDER maps focus-domain values into source-domain values."
+  (make-lg-optic
+   :apply (lambda (_p pab) pab)
+   :review builder))
+
+(defun lg-reviews (optic fn value)
+  "Review VALUE through OPTIC, then apply FN to the result."
+  (funcall fn (lg-review optic value)))
 
 (defun lg-preview-or (default optic source)
   "Preview OPTIC in SOURCE, returning DEFAULT only when missing."
@@ -649,22 +862,12 @@ Signals when INDEX is out of range."
 (defun lg-plist-key-traversal (key &optional testfn)
   "Affine traversal focusing KEY in a plist.
 TESTFN defaults to `eq'."
-  (let ((compare (or testfn #'eq)))
-    (lg--affine-traversal
-     (lambda (source)
-       (lg--plist-present-and-value source key compare))
-     (lambda (source new-focus)
-       (lg--plist-update-first source key new-focus compare)))))
+  (lg-ix key (or testfn #'eq)))
 
 (defun lg-alist-key-traversal (key &optional testfn)
   "Affine traversal focusing KEY in an alist.
 TESTFN defaults to `equal'."
-  (let ((compare (or testfn #'equal)))
-    (lg--affine-traversal
-     (lambda (source)
-       (lg--alist-present-and-value source key compare))
-     (lambda (source new-focus)
-       (lg--alist-update-first source key new-focus compare)))))
+  (lg-ix key (or testfn #'equal)))
 
 (defun lg-just ()
   "A prism for optional values represented as (just VALUE) or nil."

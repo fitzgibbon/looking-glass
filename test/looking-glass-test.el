@@ -1,8 +1,20 @@
 ;;; looking-glass-test.el --- Tests for looking-glass -*- lexical-binding: t; -*-
 
 (require 'ert)
+(require 'cl-lib)
 (require 'looking-glass)
 (require 'looking-glass-convert)
+
+(defun lg-test--random-int ()
+  "Return a random integer in a small range for repeatable law tests."
+  (- (random 200) 100))
+
+(defun lg-test--random-list ()
+  "Return a random list of integers."
+  (let ((length (random 8))
+        (result nil))
+    (dotimes (_ length (nreverse result))
+      (push (lg-test--random-int) result))))
 
 (ert-deftest lg-lens-view-set-over ()
   (let ((optic (lg-car-lens)))
@@ -155,16 +167,94 @@
 
 (ert-deftest lg-extension-point-custom-affine-optic ()
   (let ((optic
-         (lg-traversal
-          (lambda (afb source applicative)
-            (let ((pure (lg-applicative-pure applicative))
-                  (fmap (lg-applicative-fmap applicative)))
-              (if (numberp source)
-                  (funcall fmap (lambda (v) (* v 2)) (funcall afb source))
-                (funcall pure source)))))))
+         (lg-affine-traversal
+          (lambda (source)
+            (if (numberp source) (cons t source) (cons nil nil)))
+          (lambda (_source new-focus)
+            (* 2 new-focus)))))
     (should (equal (lg-over optic (lambda (x) (+ x 1)) 10) 22))
     (should (equal (lg-over optic (lambda (x) (+ x 1)) 'nope) 'nope))
     (should (equal (lg-preview-result optic 10) '(t . 10)))
     (should (equal (lg-preview-result optic 'nope) '(nil . nil)))))
+
+(ert-deftest lg-ix-and-at-for-keyed-structures ()
+  (let* ((plist '(:name nil :age 10))
+         (alist '(("name" . nil) ("age" . 10)))
+         (table (let ((h (make-hash-table :test 'equal)))
+                  (puthash "name" nil h)
+                  (puthash "age" 10 h)
+                  h)))
+    (should (equal (lg-preview-result (lg-ix :name) plist) '(t . nil)))
+    (should (equal (lg-preview-result (lg-ix :missing) plist) '(nil . nil)))
+    (should (equal (lg-set (lg-ix :name) "Ada" plist) '(:name "Ada" :age 10)))
+    (should (equal (lg-set (lg-ix :missing) 1 plist) plist))
+
+    (should (equal (lg-view (lg-at :name) plist) '(t . nil)))
+    (should (equal (lg-view (lg-at :missing) plist) '(nil . nil)))
+    (should (equal (lg-set (lg-at :missing) '(t . 99) plist)
+                   '(:name nil :age 10 :missing 99)))
+    (should (equal (lg-set (lg-at :age) '(nil . ignored) plist)
+                   '(:name nil)))
+
+    (should (equal (lg-preview-result (lg-ix "name" #'string=) alist) '(t . nil)))
+    (should (equal (lg-set (lg-at "missing" #'string=) '(t . 7) alist)
+                   '(("name") ("age" . 10) ("missing" . 7))))
+    (should (equal (lg-set (lg-at "age" #'string=) '(nil . ignored) alist)
+                   '(("name"))))
+
+    (should (equal (lg-preview-result (lg-ix "name") table) '(t . nil)))
+    (let ((updated (lg-set (lg-at "name") '(t . "Ada") table)))
+      (should (equal (gethash "name" updated) "Ada"))
+      (should (= (hash-table-count updated) 2)))
+    (let ((removed (lg-set (lg-at "age") '(nil . ignored) table)))
+      (should-not (gethash "age" removed))
+      (should (= (hash-table-count removed) 1)))))
+
+(ert-deftest lg-fold-review-and-indexed-combinators ()
+  (let* ((tr (lg-list-traversal))
+         (itr (lg-indexed-list-traversal))
+         (reviewer (lg-unto (lambda (x) (list :wrapped x)))))
+    (should (equal (lg-first-of tr '(4 5 6)) 4))
+    (should (equal (lg-last-of tr '(4 5 6)) 6))
+    (should (equal (lg-find-of tr (lambda (x) (> x 4)) '(1 3 5 7)) 5))
+    (should (lg-none-of tr (lambda (x) (eq 1 (% x 2))) '(2 4 6)))
+    (should (equal (lg-ifirst-of itr '(10 11)) '(0 . 10)))
+    (should (equal (lg-ilast-of itr '(10 11)) '(1 . 11)))
+    (should (equal (lg-ifind-of itr (lambda (i _x) (= i 1)) '(10 11 12)) '(1 . 11)))
+    (should (equal (lg-imap-of itr (lambda (i x) (+ i x)) '(10 11)) '(10 12)))
+    (should (lg-iany-of itr (lambda (i x) (= (+ i x) 12)) '(10 11)))
+    (should (lg-inone-of itr (lambda (_i x) (< x 0)) '(1 2 3)))
+    (should (lg-iall-of itr (lambda (i x) (>= (+ i x) 1)) '(1 2 3)))
+    (should (= (lg-icount-of itr '(1 2 3 4)) 4))
+    (should (equal (lg-review reviewer 9) '(:wrapped 9)))
+    (should (equal (lg-reviews reviewer #'car 9) :wrapped))))
+
+(ert-deftest lg-randomized-core-laws ()
+  (let ((lens (lg-car-lens))
+        (prism (lg-non-nil))
+        (traversal (lg-list-traversal)))
+    (dotimes (_ 100)
+      (let* ((pair (cons (lg-test--random-int) (lg-test--random-int)))
+             (v1 (lg-test--random-int))
+             (v2 (lg-test--random-int)))
+        (should (equal (lg-set lens (lg-view lens pair) pair) pair))
+        (should (equal (lg-view lens (lg-set lens v1 pair)) v1))
+        (should (equal (lg-set lens v2 (lg-set lens v1 pair))
+                       (lg-set lens v2 pair)))))
+
+    (dotimes (_ 100)
+      (let ((value (if (zerop (random 4)) nil (lg-test--random-int))))
+        (should (equal (lg-preview prism (lg-review prism value)) value))
+        (let ((previewed (lg-preview prism value)))
+          (when previewed
+            (should (equal (lg-review prism previewed) value))))))
+
+    (dotimes (_ 100)
+      (let* ((xs (lg-test--random-list))
+             (f (lambda (x) (+ x 1)))
+             (g (lambda (x) (* x 2))))
+        (should (equal (lg-over traversal #'identity xs) xs))
+        (should (equal (lg-over traversal (lambda (x) (funcall g (funcall f x))) xs)
+                       (lg-over traversal g (lg-over traversal f xs))))))))
 
 ;;; looking-glass-test.el ends here
