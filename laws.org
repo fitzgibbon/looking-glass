@@ -1,0 +1,42 @@
+#+TITLE: looking-glass laws and nil semantics
+
+* Optic law expectations
+
+- Iso (`lg-iso`)
+  - Roundtrip 1: reviewing viewed focus preserves source-domain value.
+  - Roundtrip 2: viewing reviewed focus preserves focus-domain value.
+
+- Lens (`lg-lens`)
+  - Get-Set: setting what was viewed should preserve source.
+  - Set-Get: viewing after set should yield the set value.
+  - Set-Set: last set wins.
+
+- Prism (`lg-prism`)
+  - Preview-Review: preview of reviewed focus should succeed with that focus.
+  - Review-Preview: when preview succeeds, re-reviewing the focus should land in the same matched branch.
+
+- Traversal (`lg-traversal`)
+  - Identity: `lg-over` with identity function preserves source.
+  - Composition: mapping with composed functions matches sequential mapping.
+
+* Nil guarantees and disambiguation
+
+- Presence is represented separately from value for preview operations:
+  - `lg-preview-result` returns `(FOUND . VALUE)`.
+  - `FOUND=nil` means missing focus; `FOUND=t` means present focus, even when `VALUE=nil`.
+
+- `lg-preview` alone is ambiguous for missing vs present-nil and should be used when this ambiguity is acceptable.
+
+- `lg-view` signals `lg-no-focus` on missing focus.
+
+- `lg-view-non-nil` signals `lg-expected-non-nil` when the focused value is nil.
+
+- Prism matching controls nil semantics:
+  - `lg-left nil` means no match.
+  - `lg-right nil` means match with nil as focused value.
+
+* Indexed optic notes
+
+- Indexed traversals should preserve the same update laws as unindexed traversals, with indices treated as read-only metadata.
+
+- `lg-ireindexed` must preserve focus order and values while transforming only index representation.

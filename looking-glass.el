@@ -280,6 +280,62 @@ IAFB is called as (IAFB index focus)."
                 (error "Indexed optic requires indexed profunctor reindex"))
               (lg--run-indexed-optic optic p (funcall reindex index-fn pib))))))
 
+(defun lg-getter (getter-fn)
+  "Build a read-only getter optic from GETTER-FN.
+Setter-like operations leave the source unchanged."
+  (lg-traversal
+   (lambda (afb source applicative)
+     (let ((fmap (lg-applicative-fmap applicative)))
+       (funcall fmap
+                (lambda (_new-focus) source)
+                (funcall afb (funcall getter-fn source)))))))
+
+(defalias 'lg-to #'lg-getter)
+
+(defun lg-filtered (predicate)
+  "Traversal that focuses only values satisfying PREDICATE."
+  (lg-traversal
+   (lambda (afb source applicative)
+     (if (funcall predicate source)
+         (funcall afb source)
+       (funcall (lg-applicative-pure applicative) source)))))
+
+(defun lg-ifiltered (predicate)
+  "Indexed traversal that focuses only values satisfying PREDICATE.
+PREDICATE is called as (PREDICATE index focus)."
+  (lg-indexed-traversal
+   (lambda (iafb source applicative)
+     (if (funcall predicate nil source)
+         (funcall iafb nil source)
+       (funcall (lg-applicative-pure applicative) source)))))
+
+(defun lg-indices (predicate)
+  "Indexed traversal that focuses when index matches PREDICATE."
+  (lg-ifiltered (lambda (index _focus) (funcall predicate index))))
+
+(defun lg-indexed-list-filtered (predicate)
+  "Indexed list traversal focused by PREDICATE.
+PREDICATE is called as (PREDICATE index focus)."
+  (lg-indexed-traversal
+   (lambda (iafb source applicative)
+     (lg--traverse-list-indexed
+      applicative
+      (lambda (index focus)
+        (if (funcall predicate index focus)
+            (funcall iafb index focus)
+          (funcall (lg-applicative-pure applicative) focus)))
+      source))))
+
+(defun lg-indexed-list-indices (predicate)
+  "Indexed list traversal focused by index PREDICATE."
+  (lg-indexed-list-filtered
+   (lambda (index _focus)
+     (funcall predicate index))))
+
+(defun lg-required (optic)
+  "Require non-nil focus for OPTIC by composing with `lg-non-nil'."
+  (lg-compose (lg-non-nil) optic))
+
 (defun lg--traverse-list (applicative afb source)
   "Traverse SOURCE list with AFB using APPLICATIVE."
   (let ((pure (lg-applicative-pure applicative))
@@ -410,6 +466,35 @@ FN is called as (FN index focus)."
   "Set OPTIC focus to VALUE in SOURCE."
   (lg-over optic (lambda (_focus) value) source))
 
+(defun lg-foldl-of (optic fn initial source)
+  "Left-fold OPTIC focuses in SOURCE with FN and INITIAL."
+  (cl-reduce fn (lg-to-list-of optic source) :initial-value initial))
+
+(defun lg-ifoldl-of (optic fn initial source)
+  "Left-fold indexed OPTIC focuses in SOURCE with FN and INITIAL.
+FN is called as (FN acc index focus)."
+  (cl-reduce (lambda (acc indexed-focus)
+               (funcall fn acc (car indexed-focus) (cdr indexed-focus)))
+             (lg-ito-list-of optic source)
+             :initial-value initial))
+
+(defun lg-any-of (optic predicate source)
+  "Return non-nil when any OPTIC focus in SOURCE satisfies PREDICATE."
+  (cl-some predicate (lg-to-list-of optic source)))
+
+(defun lg-all-of (optic predicate source)
+  "Return non-nil when all OPTIC focuses in SOURCE satisfy PREDICATE."
+  (cl-every predicate (lg-to-list-of optic source)))
+
+(defun lg-count-of (optic source)
+  "Count focused values of OPTIC in SOURCE."
+  (length (lg-to-list-of optic source)))
+
+(defun lg-preview-or (default optic source)
+  "Preview OPTIC in SOURCE, returning DEFAULT only when missing."
+  (let ((result (lg-preview-result optic source)))
+    (if (car result) (cdr result) default)))
+
 (defun lg-to-list-of (optic source)
   "Collect all focus values for OPTIC in SOURCE."
   (let* ((monoid (make-lg-monoid :empty nil :append #'append))
@@ -474,6 +559,28 @@ Signals `lg-no-focus' when no focus exists."
     (if value
         value
       (signal 'lg-expected-non-nil (list optic source)))))
+
+(defmacro lg-optic (&rest optics)
+  "Compose OPTICS at macro expansion time."
+  `(lg-compose ,@optics))
+
+(defmacro lg-over-> (source &rest steps)
+  "Thread SOURCE through `lg-over' steps.
+Each step is (OPTIC FN)."
+  (let ((result source))
+    (dolist (step steps result)
+      (let ((optic (car step))
+            (fn (cadr step)))
+        (setq result `(lg-over ,optic ,fn ,result))))))
+
+(defmacro lg-set-> (source &rest steps)
+  "Thread SOURCE through `lg-set' steps.
+Each step is (OPTIC VALUE)."
+  (let ((result source))
+    (dolist (step steps result)
+      (let ((optic (car step))
+            (value (cadr step)))
+        (setq result `(lg-set ,optic ,value ,result))))))
 
 (defun lg-non-nil ()
   "A prism that focuses a non-nil value."

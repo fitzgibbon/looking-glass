@@ -102,13 +102,13 @@
 
 ** Phase 3: derived optics and utilities
 
-- [ ] Implement getters/folds/setters derived from core encoding.
-- [ ] Add filtered traversal / conditional focusing combinators.
-- [ ] Add index-aware combinators where practical.
-- [ ] Add non-nil helper optics/combinators for total-focus workflows.
-- [ ] Add convenience macros for composition and threaded updates.
-- [ ] Document law expectations per optic kind.
-- [ ] Document nil laws/guarantees per optic and interpreter.
+- [X] Implement getters/folds/setters derived from core encoding.
+- [X] Add filtered traversal / conditional focusing combinators.
+- [X] Add index-aware combinators where practical.
+- [X] Add non-nil helper optics/combinators for total-focus workflows.
+- [X] Add convenience macros for composition and threaded updates.
+- [X] Document law expectations per optic kind.
+- [X] Document nil laws/guarantees per optic and interpreter.
 
 ** Phase 4: documentation and examples
 
@@ -131,6 +131,36 @@
 - [ ] `looking-glass-toml`: TOML table/array/value optics.
 - [ ] `looking-glass-buffer`: buffer/window/point/region oriented optics.
 - [ ] Shared conventions doc to keep cross-package APIs consistent.
+
+** JSON optics package plan (`looking-glass-json`)
+
+- Do not force JSON through plists as the single internal representation.
+- Use a JSON-native optic layer over parsed Elisp structures with configurable object mapping.
+- Support object representations produced by `json-parse-string` / `json-read`:
+  - plist-backed objects
+  - alist-backed objects
+  - hash-table-backed objects
+- Define core JSON optics:
+  - `j-object-key` (affine traversal/prism-like key focus)
+  - `j-array-index` (affine traversal for array positions)
+  - `j-values` (traversal over object values)
+  - `j-members` (indexed traversal over key/value pairs)
+  - scalar prisms: `j-string`, `j-number`, `j-bool`, `j-null`
+- Define explicit null semantics:
+  - JSON null represented by a dedicated sentinel (not bare nil)
+  - keep missing vs null vs value disambiguated in previews
+- Provide parser/renderer optics:
+  - parse prism: JSON string -> JSON value
+  - review: JSON value -> JSON string
+  - options for object type, array type, null sentinel, key type
+- Add path composition helpers:
+  - key/index chaining with predictable failure behavior
+  - optional path parser for JSON Pointer style paths in a later phase
+- Testing plan:
+  - roundtrip parse/review tests
+  - missing/null/value disambiguation tests
+  - representation parity tests (plist/alist/hash-table backends)
+  - indexed member traversal tests
 
 * Open design questions
 
