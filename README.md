@@ -15,7 +15,7 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ### 1) Read and update nested pair fields
 
 ```elisp
-(setq pair-optic (lg-compose (lg-cdr) (lg-car)))
+(setq pair-optic (lg-compose lg-cdr lg-car))
 
 (lg-view pair-optic '((1 . 2) . 3))
 ;; => 2
@@ -27,14 +27,14 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ### 2) Update all list items through a traversal
 
 ```elisp
-(lg-over (lg-list) (lambda (x) (* x 10)) '(1 2 3))
+(lg-over lg-list (lambda (x) (* x 10)) '(1 2 3))
 ;; => (10 20 30)
 ```
 
 ### 3) Preview and construct with a prism
 
 ```elisp
-(setq non-nil (lg-non-nil))
+(setq non-nil lg-non-nil)
 
 (lg-preview non-nil nil)
 ;; => lg-nothing
@@ -79,27 +79,27 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 (lg-set (lg-at :age) lg-nothing profile)
 ;; => (:name "Ada")
 
-(lg-view (lg-compose (lg-unmaybe) (lg-at :name)) profile)
+(lg-view (lg-compose lg-unmaybe (lg-at :name)) profile)
 ;; => "Ada"
 ```
 
 ### 7) Indexed traversals expose index + value
 
 ```elisp
-(lg-ito-list-of (lg-indexed-list) '(10 11 12))
+(lg-ito-list-of lg-indexed-list '(10 11 12))
 ;; => ((0 . 10) (1 . 11) (2 . 12))
 
-(lg-iover (lg-indexed-list) (lambda (i x) (+ i x)) '(10 11 12))
+(lg-iover lg-indexed-list (lambda (i x) (+ i x)) '(10 11 12))
 ;; => (10 12 14)
 ```
 
 ### 8) Conversion optics (`looking-glass-convert`)
 
 ```elisp
-(lg-preview (lg-number-string-prism) "  -3.5 ")
+(lg-preview lg-number-string-prism "  -3.5 ")
 ;; => (lg-just . -3.5)
 
-(lg-review (lg-number-string-prism) 15)
+(lg-review lg-number-string-prism 15)
 ;; => "15"
 ```
 

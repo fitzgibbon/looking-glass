@@ -32,21 +32,21 @@
     (lg-bench--run "over list x64"
                    iterations
                    (lambda ()
-                     (lg-over (lg-list) (lambda (x) (+ x 1)) small-list)))
+                     (lg-over lg-list (lambda (x) (+ x 1)) small-list)))
     (lg-bench--run "over list x1024"
                    iterations
                    (lambda ()
-                     (lg-over (lg-list) (lambda (x) (+ x 1)) large-list)))
+                     (lg-over lg-list (lambda (x) (+ x 1)) large-list)))
     (lg-bench--run "iover list x64"
                    iterations
                    (lambda ()
-                     (lg-iover (lg-indexed-list)
+                     (lg-iover lg-indexed-list
                                (lambda (i x) (+ i x))
                                small-list)))
     (lg-bench--run "over vector x64"
                    iterations
                    (lambda ()
-                     (lg-over (lg-vector) (lambda (x) (+ x 1)) small-vector)))
+                     (lg-over lg-vector (lambda (x) (+ x 1)) small-vector)))
     (lg-bench--run "ix plist update"
                    iterations
                    (lambda ()

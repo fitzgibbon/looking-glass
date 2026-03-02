@@ -194,14 +194,14 @@ The mapping function receives (INDEX FOCUS)."
   "Run indexed OPTIC against INDEXED-PROFUNCTOR using PIB."
   (funcall (lg-indexed-optic-apply optic) indexed-profunctor pib))
 
-(defun lg-id ()
-  "Return the identity optic."
+(defconst lg-id
   (make-lg-optic :apply (lambda (_p pab) pab)
-                 :review #'identity))
+                 :review #'identity)
+  "Identity optic.")
 
-(defun lg-indexed-id ()
-  "Return the identity indexed optic."
-  (make-lg-indexed-optic :apply (lambda (_p pib) pib)))
+(defconst lg-indexed-id
+  (make-lg-indexed-optic :apply (lambda (_p pib) pib))
+  "Identity indexed optic.")
 
 (defun lg-compose2 (outer inner)
   "Compose OUTER with INNER.
@@ -219,7 +219,7 @@ The resulting optic focuses through INNER first, then OUTER."
   "Compose OPTICS from right to left."
   (if optics
       (cl-reduce #'lg-compose2 optics :from-end t)
-    (lg-id)))
+    lg-id))
 
 (defun lg-compose-indexed2 (outer inner)
   "Compose indexed OUTER with indexed INNER."
@@ -231,7 +231,7 @@ The resulting optic focuses through INNER first, then OUTER."
   "Compose indexed OPTICS from right to left."
   (if optics
       (cl-reduce #'lg-compose-indexed2 optics :from-end t)
-    (lg-indexed-id)))
+    lg-indexed-id))
 
 (defun lg-iso (forward backward)
   "Build an isomorphism from FORWARD and BACKWARD."
@@ -367,7 +367,7 @@ PREDICATE is called as (PREDICATE index focus)."
 
 (defun lg-required (optic)
   "Require non-nil focus for OPTIC by composing with `lg-non-nil'."
-  (lg-compose (lg-non-nil) optic))
+  (lg-compose lg-non-nil optic))
 
 (defun lg--traverse-list (applicative afb source)
   "Traverse SOURCE list with AFB using APPLICATIVE."
@@ -598,15 +598,15 @@ TESTFN applies to plist/alist key comparisons."
 Use with `lg-preview-maybe' to disambiguate missing vs present nil."
   (lg-ix key testfn))
 
-(defun lg-unmaybe ()
-  "Lens that lossily converts tagged maybe focus to a nil-able value.
-Reading maps `lg-nothing' to nil and `(lg-just . VALUE)' to VALUE.
-Writing maps nil to `lg-nothing' and non-nil values to `(lg-just . VALUE)'."
+(defconst lg-unmaybe
   (lg-lens
    (lambda (maybe)
      (lg-maybe-value maybe))
    (lambda (_maybe value)
-     (if value (lg-just value) lg-nothing))))
+     (if value (lg-just value) lg-nothing)))
+  "Lossy maybe adapter lens.
+Reading maps `lg-nothing' to nil and `(lg-just . VALUE)' to VALUE.
+Writing maps nil to `lg-nothing' and non-nil values to `(lg-just . VALUE)'.")
 
 (defun lg-at (key &optional testfn)
   "Lens focusing presence and value of KEY in keyed SOURCE.
@@ -851,44 +851,43 @@ Signals `lg-no-focus' when no focus exists."
   "Compose OPTICS at macro expansion time."
   `(lg-compose ,@optics))
 
-(defun lg-non-nil ()
-  "A prism that focuses a non-nil value."
+(defconst lg-non-nil
   (lg-prism
    (lambda (value)
      (if value (lg-right value) (lg-left nil)))
-   #'identity))
+   #'identity)
+  "Prism that focuses a non-nil value.")
 
-(defun lg-car ()
-  "Lens focusing car of a cons cell."
-  (lg-lens #'car (lambda (source new-focus) (cons new-focus (cdr source)))))
+(defconst lg-car
+  (lg-lens #'car (lambda (source new-focus) (cons new-focus (cdr source))))
+  "Lens focusing car of a cons cell.")
 
-(defun lg-cdr ()
-  "Lens focusing cdr of a cons cell."
-  (lg-lens #'cdr (lambda (source new-focus) (cons (car source) new-focus))))
+(defconst lg-cdr
+  (lg-lens #'cdr (lambda (source new-focus) (cons (car source) new-focus)))
+  "Lens focusing cdr of a cons cell.")
 
-(defun lg-list ()
-  "Traversal over all elements in a list."
+(defconst lg-list
   (lg-traversal
    (lambda (afb source applicative)
-     (lg--traverse-list applicative afb source))))
+     (lg--traverse-list applicative afb source)))
+  "Traversal over all elements in a list.")
 
-(defun lg-indexed-list ()
-  "Indexed traversal over all elements in a list."
+(defconst lg-indexed-list
   (lg-indexed
    (lambda (iafb source applicative)
-     (lg--traverse-list-indexed applicative iafb source))))
+     (lg--traverse-list-indexed applicative iafb source)))
+  "Indexed traversal over all elements in a list.")
 
-(defun lg-vector ()
-  "Traversal over all elements in a vector."
+(defconst lg-vector
   (lg-traversal
    (lambda (afb source applicative)
      (let ((fmap (lg-applicative-fmap applicative)))
        (funcall fmap
                 #'vconcat
-                (lg--traverse-list applicative afb (append source nil)))))))
+                (lg--traverse-list applicative afb (append source nil))))))
+  "Traversal over all elements in a vector.")
 
-(defun lg-string ()
-  "Traversal over all characters in a string."
+(defconst lg-string
   (lg-traversal
    (lambda (afb source applicative)
      (let ((fmap (lg-applicative-fmap applicative)))
@@ -898,7 +897,8 @@ Signals `lg-no-focus' when no focus exists."
                  applicative
                  (lambda (character)
                    (funcall afb (char-to-string character)))
-                 (string-to-list source)))))))
+                 (string-to-list source))))))
+  "Traversal over all characters in a string.")
 
 (defun lg-nth (index)
   "Lens focusing INDEX in a list.
@@ -925,33 +925,33 @@ TESTFN defaults to `eq'."
 TESTFN defaults to `equal'."
   (lg-ix key (or testfn #'equal)))
 
-(defun lg-just-o ()
-  "A prism for optional values represented as (just VALUE) or nil."
+(defconst lg-just-o
   (lg-prism
    (lambda (value)
      (if (and (consp value) (eq (car value) 'just))
          (lg-right (cdr value))
        (lg-left value)))
    (lambda (value)
-     (cons 'just value))))
+     (cons 'just value)))
+  "Prism for optional values represented as (just VALUE) or nil.")
 
-(defun lg-left-o ()
-  "A prism focusing the left branch of a tagged either value."
+(defconst lg-left-o
   (lg-prism
    (lambda (value)
      (if (lg-left-p value)
          (lg-right (cdr value))
        (lg-left value)))
-   #'lg-left))
+   #'lg-left)
+  "Prism focusing the left branch of a tagged either value.")
 
-(defun lg-right-o ()
-  "A prism focusing the right branch of a tagged either value."
+(defconst lg-right-o
   (lg-prism
    (lambda (value)
      (if (lg-right-p value)
          (lg-right (cdr value))
        (lg-left value)))
-   #'lg-right))
+   #'lg-right)
+  "Prism focusing the right branch of a tagged either value.")
 
 (provide 'looking-glass)
 

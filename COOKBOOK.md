@@ -12,7 +12,7 @@ Practical examples for common Emacs Lisp data transformations.
 ## Increment every number in a list
 
 ```elisp
-(lg-over (lg-list) (lambda (x) (+ x 1)) '(1 2 3))
+(lg-over lg-list (lambda (x) (+ x 1)) '(1 2 3))
 ;; => (2 3 4)
 ```
 
@@ -27,7 +27,7 @@ Practical examples for common Emacs Lisp data transformations.
 
 ```elisp
 (setq nested '((1 . 2) . 3))
-(setq inner-cdr (lg-compose (lg-cdr) (lg-car)))
+(setq inner-cdr (lg-compose lg-cdr lg-car))
 
 (lg-view inner-cdr nested)
 ;; => 2
@@ -65,7 +65,7 @@ Practical examples for common Emacs Lisp data transformations.
 (lg-set (lg-at :nickname) (lg-just nil) person)
 ;; => (:name "Ada" :age 10 :nickname nil)
 
-(lg-view (lg-compose (lg-unmaybe) (lg-at :city)) person)
+(lg-view (lg-compose lg-unmaybe (lg-at :city)) person)
 ;; => nil
 ```
 
@@ -107,13 +107,13 @@ Practical examples for common Emacs Lisp data transformations.
 ```elisp
 (setq xs '(1 2 3 4))
 
-(lg-count-of (lg-list) xs)
+(lg-count-of lg-list xs)
 ;; => 4
 
-(lg-any-of (lg-list) (lambda (x) (> x 3)) xs)
+(lg-any-of lg-list (lambda (x) (> x 3)) xs)
 ;; => t
 
-(lg-foldl-of (lg-list) #'+ 0 xs)
+(lg-foldl-of lg-list #'+ 0 xs)
 ;; => 10
 ```
 
@@ -132,22 +132,22 @@ Practical examples for common Emacs Lisp data transformations.
 ## Work with Either-style prisms
 
 ```elisp
-(lg-over (lg-left-o) (lambda (x) (+ x 1)) (lg-left 2))
+(lg-over lg-left-o (lambda (x) (+ x 1)) (lg-left 2))
 ;; => (left . 3)
 
-(lg-over (lg-left-o) (lambda (x) (+ x 1)) (lg-right 2))
+(lg-over lg-left-o (lambda (x) (+ x 1)) (lg-right 2))
 ;; => (right . 2)
 ```
 
 ## Convert between string and number with prisms
 
 ```elisp
-(lg-preview (lg-number-string-prism) "42")
+(lg-preview lg-number-string-prism "42")
 ;; => (lg-just . 42)
 
-(lg-preview (lg-number-string-prism) "42x")
+(lg-preview lg-number-string-prism "42x")
 ;; => lg-nothing
 
-(lg-review (lg-number-string-prism) -3.5)
+(lg-review lg-number-string-prism -3.5)
 ;; => "-3.5"
 ```

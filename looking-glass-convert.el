@@ -14,9 +14,7 @@
 (require 'cl-lib)
 (require 'looking-glass)
 
-(defun lg-list-vector-iso ()
-  "Iso between list and vector.
-Forward maps list -> vector, backward maps vector -> list."
+(defconst lg-list-vector-iso
   (lg-iso
    (lambda (value)
      (if (listp value)
@@ -25,7 +23,9 @@ Forward maps list -> vector, backward maps vector -> list."
    (lambda (value)
      (if (vectorp value)
          (append value nil)
-       (error "Expected vector focus for lg-list-vector-iso")))))
+       (error "Expected vector focus for lg-list-vector-iso"))))
+  "Iso between list and vector.
+Forward maps list -> vector, backward maps vector -> list.")
 
 (defun lg--parse-number-string (value)
   "Parse VALUE into a number with full-string consumption.
@@ -39,9 +39,7 @@ Return the number on success, or nil on failure."
                      (string-match-p "\\`[[:space:]]*\\'" (substring value position)))
             candidate))))))
 
-(defun lg-number-string-prism ()
-  "Prism between string and number.
-Match parses string -> number; review renders number -> string."
+(defconst lg-number-string-prism
   (lg-prism
    (lambda (value)
      (let ((parsed (lg--parse-number-string value)))
@@ -51,10 +49,11 @@ Match parses string -> number; review renders number -> string."
    (lambda (value)
      (if (numberp value)
          (number-to-string value)
-       (error "Expected number focus for lg-number-string-prism")))))
+       (error "Expected number focus for lg-number-string-prism"))))
+  "Prism between string and number.
+Match parses string -> number; review renders number -> string.")
 
-(defun lg-char-string-prism ()
-  "Prism between string of length 1 and character code."
+(defconst lg-char-string-prism
   (lg-prism
    (lambda (value)
      (if (and (stringp value)
@@ -65,11 +64,10 @@ Match parses string -> number; review renders number -> string."
    (lambda (value)
      (if (characterp value)
          (char-to-string value)
-       (error "Expected character focus for lg-char-string-prism")))))
+       (error "Expected character focus for lg-char-string-prism"))))
+  "Prism between string of length 1 and character code.")
 
-(defun lg-symbol-string-prism ()
-  "Prism between interned symbol names and strings.
-Match uses `intern-soft' and fails when string is not interned."
+(defconst lg-symbol-string-prism
   (lg-prism
    (lambda (value)
      (if (stringp value)
@@ -81,7 +79,9 @@ Match uses `intern-soft' and fails when string is not interned."
    (lambda (value)
      (if (symbolp value)
          (symbol-name value)
-       (error "Expected symbol focus for lg-symbol-string-prism")))))
+       (error "Expected symbol focus for lg-symbol-string-prism"))))
+  "Prism between interned symbol names and strings.
+Match uses `intern-soft' and fails when string is not interned.")
 
 (defun lg--plist-even-p (plist)
   "Return non-nil when PLIST has even length."
@@ -124,16 +124,16 @@ Accepted keys are symbols and keys must be unique."
       (setq rest (cddr rest)))
     result))
 
-(defun lg-alist-plist-prism ()
-  "Prism between constrained alist and constrained plist.
-Accepted keys are unique symbols."
+(defconst lg-alist-plist-prism
   (lg-prism
    (lambda (value)
      (let ((plist (lg--alist->plist-maybe value)))
        (if (or plist (null value))
            (lg-right (or plist nil))
          (lg-left value))))
-   #'lg--plist->alist-checked))
+   #'lg--plist->alist-checked)
+  "Prism between constrained alist and constrained plist.
+Accepted keys are unique symbols.")
 
 (provide 'looking-glass-convert)
 
