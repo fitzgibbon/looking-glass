@@ -10,6 +10,10 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ```elisp
 (require 'looking-glass)
 (require 'looking-glass-convert)
+(require 'looking-glass-json)
+(require 'looking-glass-yaml)
+(require 'looking-glass-toml)
+(require 'looking-glass-buffer)
 ```
 
 ### 1) Read and update nested pair fields
@@ -115,6 +119,14 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 - Folds: `lg-to-list-of`, `lg-first-of`, `lg-last-of`, `lg-find-of`, `lg-any-of`, `lg-all-of`
 - Indexed folds and updates: `lg-ito-list-of`, `lg-ifirst-of`, `lg-ilast-of`, `lg-ifind-of`, `lg-iover`
 - Review helpers: `lg-review`, `lg-unto`, `lg-reviews`
+
+### Extension packages
+
+- `looking-glass-convert`: conversion optics (`lg-list-vector-iso`, `lg-number-string-prism`, ...)
+- `looking-glass-json`: JSON object/array/scalar/text optics (`lg-json-object-key`, `lg-json-array-index`, `lg-json-text-prism`, ...)
+- `looking-glass-yaml`: YAML mapping/sequence/scalar optics (`lg-yaml-key`, `lg-yaml-index`, ...)
+- `looking-glass-toml`: TOML table/array/scalar optics (`lg-toml-key`, `lg-toml-array-index`, `lg-toml-text-prism`, ...)
+- `looking-glass-buffer`: buffer-oriented optics (`lg-buffer-point`, `lg-buffer-string`, `lg-buffer-region-string`, ...)
 
 ## Documentation
 
