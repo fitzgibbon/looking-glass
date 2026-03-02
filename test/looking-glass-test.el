@@ -23,8 +23,18 @@
 (ert-deftest lg-prism-non-nil ()
   (let ((optic (lg-non-nil)))
     (should (equal (lg-preview optic 42) 42))
+    (should (equal (lg-review optic 42) 42))
     (should (equal (lg-preview-result optic nil) '(nil . nil)))
     (should-not (lg-has optic nil))))
+
+(ert-deftest lg-review-support ()
+  (let* ((just (lg-just))
+         (iso (lg-iso #'number-to-string #'string-to-number))
+         (composed (lg-compose just iso)))
+    (should (equal (lg-review just 7) '(just . 7)))
+    (should (equal (lg-review iso "42") 42))
+    (should (equal (lg-review composed "9") '(just . 9)))
+    (should-error (lg-review (lg-list-traversal) 1))))
 
 (ert-deftest lg-preview-result-disambiguates-present-nil ()
   (let* ((optic (lg-plist-key-traversal :name))
@@ -50,6 +60,21 @@
   (should (equal (lg-over (lg-vector-traversal) (lambda (x) (+ x 1)) [1 2 3]) [2 3 4]))
   (should (equal (lg-over (lg-string-traversal) #'upcase "abc") "ABC"))
   (should (equal (lg-to-list-of (lg-string-traversal) "ab") '("a" "b"))))
+
+(ert-deftest lg-indexed-list-base-and-ops ()
+  (let ((optic (lg-indexed-list-traversal)))
+    (should (equal (lg-ito-list-of optic '(10 nil 30))
+                   '((0 . 10) (1) (2 . 30))))
+    (should (equal (lg-ipreview-result optic '(10 nil 30)) '(t . (0 . 10))))
+    (should (equal (lg-ipreview-result optic '()) '(nil . nil)))
+    (should (equal (lg-iover optic (lambda (i x) (if (= i 1) 99 x)) '(10 20 30))
+                   '(10 99 30)))))
+
+(ert-deftest lg-indexed-reindexing ()
+  (let* ((base (lg-indexed-list-traversal))
+         (shifted (lg-ireindexed (lambda (index) (+ index 10)) base)))
+    (should (equal (lg-ito-list-of shifted '(4 5)) '((10 . 4) (11 . 5))))
+    (should (equal (lg-iover shifted (lambda (i x) (+ i x)) '(4 5)) '(14 16)))))
 
 (ert-deftest lg-extension-point-custom-affine-optic ()
   (let ((optic
