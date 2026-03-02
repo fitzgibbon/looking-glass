@@ -67,6 +67,39 @@
   "Return non-nil when EITHER is a right value."
   (eq (car either) 'right))
 
+(defun lg-either-p (value)
+  "Return non-nil when VALUE is a tagged Either.
+Accepted shapes are `(left . X)' and `(right . X)'."
+  (and (consp value)
+       (or (eq (car value) 'left)
+           (eq (car value) 'right))))
+
+(defun lg-either-value (either)
+  "Return payload value from tagged EITHER.
+Signals when EITHER is not a tagged either value."
+  (if (lg-either-p either)
+      (cdr either)
+    (error "Expected tagged either value")))
+
+(defconst lg-nothing 'lg-nothing
+  "Tagged Maybe value representing an absent focus.")
+
+(defun lg-just (value)
+  "Construct a tagged Maybe value containing VALUE."
+  (cons 'lg-just value))
+
+(defun lg-just-p (maybe)
+  "Return non-nil when MAYBE is a tagged present value."
+  (and (consp maybe) (eq (car maybe) 'lg-just)))
+
+(defun lg-nothing-p (maybe)
+  "Return non-nil when MAYBE is tagged as absent."
+  (eq maybe lg-nothing))
+
+(defun lg-maybe-value (maybe)
+  "Return payload for tagged MAYBE, or nil when absent."
+  (if (lg-just-p maybe) (cdr maybe) nil))
+
 (defun lg--identity-applicative ()
   "Return the identity applicative."
   (make-lg-applicative
@@ -373,7 +406,7 @@ IAFB is called as (IAFB index focus)."
      :initial-value (funcall pure nil))))
 
 (defun lg--plist-present-and-value (plist key testfn)
-  "Return (FOUND . VALUE) for KEY in PLIST using TESTFN."
+  "Return tagged maybe for KEY in PLIST using TESTFN."
   (let ((rest plist)
         found
         value)
@@ -384,7 +417,9 @@ IAFB is called as (IAFB index focus)."
           (setq found t
                 value candidate-value))
         (setq rest (cddr rest))))
-    (cons found value)))
+    (if found
+        (lg-just value)
+      lg-nothing)))
 
 (defun lg--plist-update-first (plist key value testfn)
   "Return PLIST with first KEY set to VALUE using TESTFN."
@@ -403,11 +438,11 @@ IAFB is called as (IAFB index focus)."
     result))
 
 (defun lg--alist-present-and-value (alist key testfn)
-  "Return (FOUND . VALUE) for KEY in ALIST using TESTFN."
+  "Return tagged maybe for KEY in ALIST using TESTFN."
   (let ((cell (cl-find-if (lambda (entry)
                             (funcall testfn (car entry) key))
                           alist)))
-    (if cell (cons t (cdr cell)) (cons nil nil))))
+    (if cell (lg-just (cdr cell)) lg-nothing)))
 
 (defun lg--alist-update-first (alist key value testfn)
   "Return ALIST with first KEY set to VALUE using TESTFN."
@@ -436,10 +471,9 @@ IAFB is called as (IAFB index focus)."
 
 (defun lg--plist-set-first-or-add (plist key value testfn)
   "Return PLIST with first KEY set to VALUE, adding when missing."
-  (let ((found (car (lg--plist-present-and-value plist key testfn))))
-    (if found
-        (lg--plist-update-first plist key value testfn)
-      (append plist (list key value)))))
+  (if (lg-just-p (lg--plist-present-and-value plist key testfn))
+      (lg--plist-update-first plist key value testfn)
+    (append plist (list key value))))
 
 (defun lg--alist-remove-first (alist key testfn)
   "Return ALIST with first KEY removed using TESTFN."
@@ -452,10 +486,9 @@ IAFB is called as (IAFB index focus)."
 
 (defun lg--alist-set-first-or-add (alist key value testfn)
   "Return ALIST with first KEY set to VALUE, adding when missing."
-  (let ((found (car (lg--alist-present-and-value alist key testfn))))
-    (if found
-        (lg--alist-update-first alist key value testfn)
-      (append alist (list (cons key value))))))
+  (if (lg-just-p (lg--alist-present-and-value alist key testfn))
+      (lg--alist-update-first alist key value testfn)
+    (append alist (list (cons key value)))))
 
 (defun lg--alist-p (value)
   "Return non-nil when VALUE is an alist."
@@ -471,7 +504,7 @@ IAFB is called as (IAFB index focus)."
    (t nil)))
 
 (defun lg--keyed-present-and-value (source key &optional testfn)
-  "Return (FOUND . VALUE) for KEY in SOURCE.
+  "Return tagged maybe for KEY in SOURCE.
 SOURCE can be plist, alist, or hash table."
   (pcase (lg--keyed-kind source)
     ('plist (lg--plist-present-and-value source key (or testfn #'eq)))
@@ -479,20 +512,20 @@ SOURCE can be plist, alist, or hash table."
     ('hash-table
      (let* ((missing (make-symbol "lg-missing"))
             (value (gethash key source missing)))
-       (if (eq value missing)
-           (cons nil nil)
-         (cons t value))))
+        (if (eq value missing)
+            lg-nothing
+          (lg-just value))))
     (_ (error "Unsupported keyed source type: %S" source))))
 
 (defun lg--keyed-set-existing (source key value &optional testfn)
   "Set existing KEY to VALUE in SOURCE, preserving missing keys."
   (pcase (lg--keyed-kind source)
     ('plist
-     (if (car (lg--plist-present-and-value source key (or testfn #'eq)))
+     (if (lg-just-p (lg--plist-present-and-value source key (or testfn #'eq)))
          (lg--plist-update-first source key value (or testfn #'eq))
        source))
     ('alist
-     (if (car (lg--alist-present-and-value source key (or testfn #'equal)))
+     (if (lg-just-p (lg--alist-present-and-value source key (or testfn #'equal)))
          (lg--alist-update-first source key value (or testfn #'equal))
        source))
     ('hash-table
@@ -505,43 +538,43 @@ SOURCE can be plist, alist, or hash table."
            copy))))
     (_ (error "Unsupported keyed source type: %S" source))))
 
-(defun lg--keyed-set-presence (source key present value &optional testfn)
+(defun lg--keyed-set-maybe (source key maybe &optional testfn)
   "Set presence state for KEY in SOURCE.
-When PRESENT is non-nil, insert or update KEY with VALUE.
-When PRESENT is nil, remove KEY if present."
+When MAYBE is `lg-nothing', remove KEY if present.
+When MAYBE is `(lg-just . VALUE)', insert or update KEY with VALUE."
+  (unless (or (lg-nothing-p maybe) (lg-just-p maybe))
+    (error "Expected tagged maybe value"))
   (pcase (lg--keyed-kind source)
     ('plist
-     (if present
-         (lg--plist-set-first-or-add source key value (or testfn #'eq))
+     (if (lg-just-p maybe)
+         (lg--plist-set-first-or-add source key (cdr maybe) (or testfn #'eq))
        (lg--plist-remove-first source key (or testfn #'eq))))
     ('alist
-     (if present
-         (lg--alist-set-first-or-add source key value (or testfn #'equal))
+     (if (lg-just-p maybe)
+         (lg--alist-set-first-or-add source key (cdr maybe) (or testfn #'equal))
        (lg--alist-remove-first source key (or testfn #'equal))))
     ('hash-table
-     (let ((copy (copy-hash-table source)))
-       (if present
-           (puthash key value copy)
+      (let ((copy (copy-hash-table source)))
+       (if (lg-just-p maybe)
+           (puthash key (cdr maybe) copy)
          (remhash key copy))
        copy))
     (_ (error "Unsupported keyed source type: %S" source))))
 
 (defun lg-affine-traversal (preview-fn set-fn)
   "Build an affine traversal from PREVIEW-FN and SET-FN.
-PREVIEW-FN must return (FOUND . FOCUS).
+PREVIEW-FN must return tagged maybe (`lg-nothing' or `(lg-just . FOCUS)').
 SET-FN is called as (SET-FN source new-focus)."
   (lg-traversal
    (lambda (afb source applicative)
      (let* ((result (funcall preview-fn source))
-            (found (car result))
-            (focus (cdr result))
             (pure (lg-applicative-pure applicative))
             (fmap (lg-applicative-fmap applicative)))
-       (if found
+       (if (lg-just-p result)
             (funcall fmap
                      (lambda (new-focus)
                        (funcall set-fn source new-focus))
-                     (funcall afb focus))
+                     (funcall afb (cdr result)))
           (funcall pure source))))))
 
 (defalias 'lg--affine-traversal #'lg-affine-traversal)
@@ -558,17 +591,16 @@ TESTFN applies to plist/alist key comparisons."
 
 (defun lg-at (key &optional testfn)
   "Lens focusing presence and value of KEY in keyed SOURCE.
-The focus shape is (FOUND . VALUE). Setting to (nil . _) removes KEY.
-Setting to (t . VALUE) inserts or updates KEY.
+The focus shape is tagged maybe (`lg-nothing' or `(lg-just . VALUE)').
+Setting to `lg-nothing' removes KEY.
+Setting to `(lg-just . VALUE)' inserts or updates KEY.
 SOURCE can be plist, alist, or hash table.
 TESTFN applies to plist/alist key comparisons."
   (lg-lens
    (lambda (source)
      (lg--keyed-present-and-value source key testfn))
-   (lambda (source state)
-     (unless (consp state)
-       (error "lg-at expects state of shape (FOUND . VALUE)"))
-     (lg--keyed-set-presence source key (car state) (cdr state) testfn))))
+   (lambda (source maybe)
+     (lg--keyed-set-maybe source key maybe testfn))))
 
 (defun lg-hash-key-traversal (key)
   "Affine traversal focusing existing KEY in a hash table."
@@ -612,7 +644,7 @@ FN is called as (FN index focus)."
 
 (defun lg-first-of (optic source)
   "Return first focus of OPTIC in SOURCE, or nil when absent."
-  (cdr (lg-preview-result optic source)))
+  (lg-maybe-value (lg-preview-result optic source)))
 
 (defun lg-last-of (optic source)
   "Return last focus of OPTIC in SOURCE, or nil when absent."
@@ -634,7 +666,7 @@ FN is called as (FN acc index focus)."
 
 (defun lg-ifirst-of (optic source)
   "Return first indexed focus of OPTIC in SOURCE, or nil when absent."
-  (cdr (lg-ipreview-result optic source)))
+  (lg-maybe-value (lg-ipreview-result optic source)))
 
 (defun lg-ilast-of (optic source)
   "Return last indexed focus of OPTIC in SOURCE, or nil when absent."
@@ -706,7 +738,7 @@ BUILDER maps focus-domain values into source-domain values."
 (defun lg-preview-or (default optic source)
   "Preview OPTIC in SOURCE, returning DEFAULT only when missing."
   (let ((result (lg-preview-result optic source)))
-    (if (car result) (cdr result) default)))
+    (if (lg-just-p result) (cdr result) default)))
 
 (defun lg-to-list-of (optic source)
   "Collect all focus values for OPTIC in SOURCE."
@@ -735,34 +767,34 @@ Each item is (INDEX . FOCUS)."
 
 (defun lg-ipreview-result (optic source)
   "Return a disambiguated indexed preview for OPTIC in SOURCE.
-Returns (FOUND . (INDEX . VALUE))."
+Returns tagged maybe containing (INDEX . VALUE)."
   (let ((focuses (lg-ito-list-of optic source)))
     (if focuses
-        (cons t (car focuses))
-      (cons nil nil))))
+        (lg-just (car focuses))
+      lg-nothing)))
 
 (defun lg-preview-result (optic source)
   "Return a disambiguated preview for OPTIC in SOURCE.
-Returns (FOUND . VALUE), where FOUND is non-nil iff a focus exists.
+Returns tagged maybe (`lg-nothing' or `(lg-just . VALUE)').
 VALUE can be nil when nil is an actual focus value."
   (let ((focuses (lg-to-list-of optic source)))
     (if focuses
-        (cons t (car focuses))
-      (cons nil nil))))
+        (lg-just (car focuses))
+      lg-nothing)))
 
 (defun lg-preview (optic source)
   "Return first focus value for OPTIC in SOURCE, or nil when absent."
-  (cdr (lg-preview-result optic source)))
+  (lg-maybe-value (lg-preview-result optic source)))
 
 (defun lg-has (optic source)
   "Return non-nil when OPTIC has at least one focus in SOURCE."
-  (car (lg-preview-result optic source)))
+  (lg-just-p (lg-preview-result optic source)))
 
 (defun lg-view (optic source)
   "View exactly one expected focus from OPTIC in SOURCE.
 Signals `lg-no-focus' when no focus exists."
   (let ((result (lg-preview-result optic source)))
-    (if (car result)
+    (if (lg-just-p result)
         (cdr result)
       (signal 'lg-no-focus (list optic source)))))
 
@@ -869,7 +901,7 @@ TESTFN defaults to `eq'."
 TESTFN defaults to `equal'."
   (lg-ix key (or testfn #'equal)))
 
-(defun lg-just ()
+(defun lg-just-o ()
   "A prism for optional values represented as (just VALUE) or nil."
   (lg-prism
    (lambda (value)
@@ -878,6 +910,24 @@ TESTFN defaults to `equal'."
        (lg-left value)))
    (lambda (value)
      (cons 'just value))))
+
+(defun lg-left-o ()
+  "A prism focusing the left branch of a tagged either value."
+  (lg-prism
+   (lambda (value)
+     (if (lg-left-p value)
+         (lg-right (cdr value))
+       (lg-left value)))
+   #'lg-left))
+
+(defun lg-right-o ()
+  "A prism focusing the right branch of a tagged either value."
+  (lg-prism
+   (lambda (value)
+     (if (lg-right-p value)
+         (lg-right (cdr value))
+       (lg-left value)))
+   #'lg-right))
 
 (provide 'looking-glass)
 
