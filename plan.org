@@ -1,0 +1,142 @@
+#+TITLE: looking-glass: profunctor lenses in emacs lisp
+* Features
+
+** Scope and goals
+
+- Build a profunctor-based optics library for Emacs Lisp: `looking-glass` (`lg`).
+- Target practical parity with PureScript `profunctor-lenses` and key pieces of Haskell `lens`.
+- Prefer Emacs Lisp ergonomics over direct 1:1 API porting.
+- Start with core optics and built-in Emacs Lisp data structures.
+- Add richer domain packages (JSON, YAML, TOML, buffers) later in this repository.
+
+** Core design principles
+
+- Use profunctor encodings for optic composition and interpretation.
+- Keep the optic representation purely profunctor-based (no ad-hoc alternate encodings in core).
+- Optimize for extensibility: new optic kinds should be definable as thin wrappers over profunctor constraints.
+- Keep APIs explicit and discoverable (`lg-` prefix, consistent verb naming).
+- Provide both composable optic values and convenience operation functions.
+- Favor immutable-style update semantics while remaining idiomatic for Elisp users.
+- Ensure optics are lawful where meaningful and document edge-case behavior.
+
+** Core optic types (v1)
+
+- Isomorphism (`iso`)
+- Lens (`lens`)
+- Prism (`prism`)
+- Traversal (`traversal`)
+- Setter / Getter / Fold-style derived optics
+- Indexed variants for list/vector/string positions and map-like keys
+
+** Optic extensibility model
+
+- Define one canonical internal optic representation and composition path.
+- Expose extension points for defining new optic types via profunctor constraints and interpreters.
+- Keep constructors separate from interpreters so new optics can reuse existing operations.
+- Require every new optic type to document its laws and composition behavior.
+
+** Core operations (v1)
+
+- `view` / `preview` / `to-list-of`
+- `over` / `set`
+- `has` / `isn\='t`-style predicates (or Elisp-idiomatic equivalents)
+- Composition operator/function (`compose`, threaded helper macros)
+- Optional state-style helpers if they fit Elisp ergonomics
+
+** Built-in data structure support (initial package)
+
+- Pairs and cons cells (`car`, `cdr`, nested pair paths)
+- Lists (head/tail/indexed element traversals)
+- Plists (key lens/prism, optional missing-key semantics)
+- Alists (key optics with configurable equality)
+- Vectors and arrays
+- Strings (character index traversal/lens, substring optics if feasible)
+- Hash tables (key optics as optional v1.1 target)
+
+** Ergonomics and compatibility
+
+- Emacs version support policy (define minimum supported version).
+- Clear behavior for nil vs empty values across structures.
+- Distinguish nil-as-missing from nil-as-value in APIs that touch associative structures.
+- Optics should preserve focus semantics: any nil produced by the focus is passed through unchanged.
+- Where the optic kind allows, provide non-nil guarantees for total optics (and document when guarantees do not apply).
+- Customization points: equality predicates, missing-key behavior, defaults.
+- Optional macros to reduce ceremony in common composition/update flows.
+
+** Quality and docs
+
+- ERT test suite with law-inspired tests and behavior tests.
+- Examples-first README and per-optic docstrings.
+- Benchmarks for core operations on typical data structures.
+- Changelog and migration notes for API changes.
+
+* TODO Roadmap
+
+** Phase 0: project scaffolding
+
+- [ ] Define package layout (`lisp/`, `test/`, `docs/`, optional `bench/`).
+- [ ] Add package metadata and dependency declarations.
+- [ ] Set up linting/CI (byte-compile, tests, style checks).
+- [ ] Establish naming conventions and public API policy.
+
+** Phase 1: profunctor core
+
+- [ ] Implement core profunctor protocols/constructors needed by optics.
+- [ ] Implement optic representation and composition primitives.
+- [ ] Implement a documented extension protocol for adding new optic kinds.
+- [ ] Implement `iso`, `lens`, `prism`, `traversal` constructors.
+- [ ] Provide base interpreters (`view`, `over`, `set`, `preview`).
+- [ ] Add tests for composition identity/associativity expectations.
+- [ ] Define and test nil-propagation semantics at the representation/interpreter level.
+- [ ] Add a worked example: implement one non-core optic type via the extension path.
+
+** Phase 2: fundamental structure optics
+
+- [ ] Pairs: `car` and `cdr` lenses.
+- [ ] Lists: index lens/prism/traversal variants and safe failure semantics.
+- [ ] Plists: key lens/traversal with configurable missing-key behavior.
+- [ ] Alists: key optics with configurable key equality predicate.
+- [ ] Add APIs/options for distinguishing missing keys from present-nil values.
+- [ ] Strings: indexed char lens/traversal and update behavior tests.
+- [ ] Vectors: indexed optics and traversal performance sanity checks.
+
+** Phase 3: derived optics and utilities
+
+- [ ] Implement getters/folds/setters derived from core encoding.
+- [ ] Add filtered traversal / conditional focusing combinators.
+- [ ] Add index-aware combinators where practical.
+- [ ] Add non-nil helper optics/combinators for total-focus workflows.
+- [ ] Add convenience macros for composition and threaded updates.
+- [ ] Document law expectations per optic kind.
+- [ ] Document nil laws/guarantees per optic and interpreter.
+
+** Phase 4: documentation and examples
+
+- [ ] Write README quickstart (5-10 practical examples).
+- [ ] Add cookbook for common Emacs Lisp transformations.
+- [ ] Add API reference sections by optic type and data structure.
+- [ ] Add comparison notes vs Haskell/PureScript naming and semantics.
+
+** Phase 5: hardening and release
+
+- [ ] Add broader property-style/randomized tests where feasible.
+- [ ] Run microbenchmarks and optimize hot paths.
+- [ ] Finalize versioning/release process.
+- [ ] Tag v0.1.0 with core package + docs.
+
+** Later packages (same repo, separate packages)
+
+- [ ] `looking-glass-json`: optics for JSON object/array/scalar data.
+- [ ] `looking-glass-yaml`: YAML node/path optics.
+- [ ] `looking-glass-toml`: TOML table/array/value optics.
+- [ ] `looking-glass-buffer`: buffer/window/point/region oriented optics.
+- [ ] Shared conventions doc to keep cross-package APIs consistent.
+
+* Open design questions
+
+- [ ] Decide minimum Emacs version and compatibility stance.
+- [ ] Decide exact public naming (`lg-view` vs `lg/view` style aliases).
+- [ ] Decide default missing-key semantics for plist/alist/hash-table optics.
+- [ ] Decide concrete API for "missing" vs "present with nil" disambiguation.
+- [ ] Decide mutation policy (pure return-only vs opt-in destructive helpers).
+- [ ] Decide whether to include state monad-style APIs in core or extension.
