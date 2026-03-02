@@ -112,10 +112,10 @@
 
 ** Phase 4: documentation and examples
 
-- [ ] Write README quickstart (5-10 practical examples).
-- [ ] Add cookbook for common Emacs Lisp transformations.
-- [ ] Add API reference sections by optic type and data structure.
-- [ ] Add comparison notes vs Haskell/PureScript naming and semantics.
+- [X] Write README quickstart (5-10 practical examples).
+- [X] Add cookbook for common Emacs Lisp transformations.
+- [X] Add API reference sections by optic type and data structure.
+- [X] Add comparison notes vs Haskell/PureScript naming and semantics.
 
 ** Phase 5: hardening and release
 
