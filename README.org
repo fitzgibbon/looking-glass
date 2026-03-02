@@ -143,3 +143,25 @@ Example:
     (buffer-string)))
 ;; => "x=20\ny=40\n"
 #+end_src
+
+* Tree-sitter extension
+
+This repo also includes =looking-glass-tree-sitter.el= for AST-aware optics in
+tree-sitter-enabled buffers:
+
+- Root/query node access: =lg-ts-root-node=, =lg-ts-query-nodes=,
+  =lg-its-query-nodes=.
+- Query text traversals for structural rewrites: =lg-ts-query=,
+  =lg-its-query=.
+
+Example (increment all JSON number nodes in current buffer):
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-buffer)
+(require 'looking-glass-tree-sitter)
+
+(lg-over (lg-ts-query '((number) @num) 'json 'num)
+         (lambda (s) (number-to-string (1+ (string-to-number s))))
+         (current-buffer))
+#+end_src
