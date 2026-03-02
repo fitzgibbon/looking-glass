@@ -74,31 +74,31 @@
 
 ** Phase 0: project scaffolding
 
-- [ ] Define package layout (`lisp/`, `test/`, `docs/`, optional `bench/`).
-- [ ] Add package metadata and dependency declarations.
+- [X] Define package layout (`lisp/`, `test/`, `docs/`, optional `bench/`).
+- [X] Add package metadata and dependency declarations.
 - [ ] Set up linting/CI (byte-compile, tests, style checks).
 - [ ] Establish naming conventions and public API policy.
 
 ** Phase 1: profunctor core
 
-- [ ] Implement core profunctor protocols/constructors needed by optics.
-- [ ] Implement optic representation and composition primitives.
-- [ ] Implement a documented extension protocol for adding new optic kinds.
-- [ ] Implement `iso`, `lens`, `prism`, `traversal` constructors.
-- [ ] Provide base interpreters (`view`, `over`, `set`, `preview`).
-- [ ] Add tests for composition identity/associativity expectations.
-- [ ] Define and test nil-propagation semantics at the representation/interpreter level.
-- [ ] Add a worked example: implement one non-core optic type via the extension path.
+- [X] Implement core profunctor protocols/constructors needed by optics.
+- [X] Implement optic representation and composition primitives.
+- [X] Implement a documented extension protocol for adding new optic kinds.
+- [X] Implement `iso`, `lens`, `prism`, `traversal` constructors.
+- [X] Provide base interpreters (`view`, `over`, `set`, `preview`).
+- [X] Add tests for composition identity/associativity expectations.
+- [X] Define and test nil-propagation semantics at the representation/interpreter level.
+- [X] Add a worked example: implement one non-core optic type via the extension path.
 
 ** Phase 2: fundamental structure optics
 
-- [ ] Pairs: `car` and `cdr` lenses.
-- [ ] Lists: index lens/prism/traversal variants and safe failure semantics.
-- [ ] Plists: key lens/traversal with configurable missing-key behavior.
-- [ ] Alists: key optics with configurable key equality predicate.
-- [ ] Add APIs/options for distinguishing missing keys from present-nil values.
-- [ ] Strings: indexed char lens/traversal and update behavior tests.
-- [ ] Vectors: indexed optics and traversal performance sanity checks.
+- [X] Pairs: `car` and `cdr` lenses.
+- [X] Lists: index lens/prism/traversal variants and safe failure semantics.
+- [X] Plists: key lens/traversal with configurable missing-key behavior.
+- [X] Alists: key optics with configurable key equality predicate.
+- [X] Add APIs/options for distinguishing missing keys from present-nil values.
+- [X] Strings: indexed char lens/traversal and update behavior tests.
+- [X] Vectors: indexed optics and traversal performance sanity checks.
 
 ** Phase 3: derived optics and utilities
 
