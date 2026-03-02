@@ -119,9 +119,9 @@
 
 ** Phase 5: hardening and release
 
-- [ ] Add broader property-style/randomized tests where feasible.
-- [ ] Run microbenchmarks and optimize hot paths.
-- [ ] Finalize versioning/release process.
+- [X] Add broader property-style/randomized tests where feasible.
+- [X] Run microbenchmarks and optimize hot paths.
+- [X] Finalize versioning/release process.
 - [ ] Tag v0.1.0 with core package + docs.
 
 ** Later packages (same repo, separate packages)

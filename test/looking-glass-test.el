@@ -16,6 +16,13 @@
     (dotimes (_ length (nreverse result))
       (push (lg-test--random-int) result))))
 
+(defun lg-test--random-string ()
+  "Return a random lowercase ASCII string."
+  (let ((length (random 16))
+        (result nil))
+    (dotimes (_ length (apply #'string (nreverse result)))
+      (push (+ ?a (random 26)) result))))
+
 (ert-deftest lg-lens-view-set-over ()
   (let ((optic (lg-car)))
     (should (equal (lg-view optic '(1 . 2)) 1))
@@ -280,5 +287,61 @@
         (should (equal (lg-over traversal #'identity xs) xs))
         (should (equal (lg-over traversal (lambda (x) (funcall g (funcall f x))) xs)
                        (lg-over traversal g (lg-over traversal f xs))))))))
+
+(ert-deftest lg-randomized-keyed-optics-laws ()
+  (dolist (kind '(plist alist hash))
+    (dotimes (_ 100)
+      (let* ((present (zerop (random 2)))
+             (value (if (zerop (random 4)) nil (lg-test--random-int)))
+             (replacement (if (zerop (random 4)) nil (lg-test--random-int)))
+             (key (if (eq kind 'plist) :k "k"))
+             (testfn (if (eq kind 'alist) #'string= nil))
+             (source
+              (pcase kind
+                ('plist (if present
+                            (list :k value :other 1)
+                          (list :other 1)))
+                ('alist (if present
+                            (list (cons "k" value) (cons "other" 1))
+                          (list (cons "other" 1))))
+                ('hash (let ((table (make-hash-table :test 'equal)))
+                         (when present
+                           (puthash "k" value table))
+                         (puthash "other" 1 table)
+                         table))))
+             (ix (lg-ix key testfn))
+             (at (lg-at key testfn)))
+        (should (equal (lg-has ix source) present))
+        (should (equal (lg-view at source)
+                       (if present (lg-just value) lg-nothing)))
+
+        (let ((ix-updated (lg-set ix replacement source)))
+          (should (equal (lg-preview-result ix ix-updated)
+                         (if present (lg-just replacement) lg-nothing))))
+
+        (let ((at-updated (lg-set at (lg-just replacement) source)))
+          (should (equal (lg-preview-result ix at-updated)
+                         (lg-just replacement))))
+
+        (let ((at-removed (lg-set at lg-nothing source)))
+          (should (equal (lg-preview-result ix at-removed) lg-nothing)))))))
+
+(ert-deftest lg-randomized-vector-and-string-traversal-laws ()
+  (let ((vector-optic (lg-vector))
+        (string-optic (lg-string)))
+    (dotimes (_ 100)
+      (let* ((xs (lg-test--random-list))
+             (vec (vconcat xs))
+             (f (lambda (x) (+ x 1)))
+             (g (lambda (x) (* x 2))))
+        (should (equal (lg-over vector-optic #'identity vec) vec))
+        (should (equal (lg-over vector-optic (lambda (x) (funcall g (funcall f x))) vec)
+                       (lg-over vector-optic g (lg-over vector-optic f vec))))))
+
+    (dotimes (_ 100)
+      (let ((s (lg-test--random-string)))
+        (should (equal (lg-over string-optic #'identity s) s))
+        (should (equal (lg-over string-optic #'upcase s)
+                       (upcase s)))))))
 
 ;;; looking-glass-test.el ends here

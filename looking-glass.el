@@ -374,16 +374,18 @@ PREDICATE is called as (PREDICATE index focus)."
   (let ((pure (lg-applicative-pure applicative))
         (ap (lg-applicative-ap applicative))
         (fmap (lg-applicative-fmap applicative)))
-    (cl-reduce
-     (lambda (acc focus)
-       (funcall ap
-                (funcall fmap
-                         (lambda (partial)
-                           (lambda (item) (append partial (list item))))
-                         acc)
-                (funcall afb focus)))
-     source
-     :initial-value (funcall pure nil))))
+    (funcall fmap
+             #'nreverse
+             (cl-reduce
+              (lambda (acc focus)
+                (funcall ap
+                         (funcall fmap
+                                  (lambda (partial)
+                                    (lambda (item) (cons item partial)))
+                                  acc)
+                         (funcall afb focus)))
+              source
+              :initial-value (funcall pure nil)))))
 
 (defun lg--traverse-list-indexed (applicative iafb source)
   "Traverse SOURCE list with IAFB using APPLICATIVE.
@@ -392,18 +394,20 @@ IAFB is called as (IAFB index focus)."
         (ap (lg-applicative-ap applicative))
         (fmap (lg-applicative-fmap applicative))
         (index 0))
-    (cl-reduce
-     (lambda (acc focus)
-       (let ((current index))
-         (setq index (1+ index))
-         (funcall ap
-                  (funcall fmap
-                           (lambda (partial)
-                             (lambda (item) (append partial (list item))))
-                           acc)
-                  (funcall iafb current focus))))
-     source
-     :initial-value (funcall pure nil))))
+    (funcall fmap
+             #'nreverse
+             (cl-reduce
+              (lambda (acc focus)
+                (let ((current index))
+                  (setq index (1+ index))
+                  (funcall ap
+                           (funcall fmap
+                                    (lambda (partial)
+                                      (lambda (item) (cons item partial)))
+                                    acc)
+                           (funcall iafb current focus))))
+              source
+              :initial-value (funcall pure nil)))))
 
 (defun lg--plist-present-and-value (plist key testfn)
   "Return tagged maybe for KEY in PLIST using TESTFN."

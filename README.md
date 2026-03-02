@@ -117,6 +117,16 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 - Cookbook: `COOKBOOK.md`
 - API reference by optic type and data structure: `API-REFERENCE.md`
 - Naming/semantics comparison vs Haskell `lens` and PureScript `profunctor-lenses`: `COMPARISON.md`
+- Changelog: `CHANGELOG.md`
+- Release process and versioning policy: `RELEASE.md`
+
+## Benchmarks
+
+Run the microbenchmark suite:
+
+```bash
+emacs -Q --batch -L . -L bench -l bench/looking-glass-bench.el -f lg-bench-run
+```
 
 ## Notes on semantics
 
