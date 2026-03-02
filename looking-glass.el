@@ -293,7 +293,7 @@ WANDER-FN is called as (WANDER-FN afb source applicative)."
                 (error "Traversal requires profunctor wander"))
               (funcall wander wander-fn pab)))))
 
-(defun lg-indexed-traversal (wander-fn)
+(defun lg-indexed (wander-fn)
   "Build an indexed traversal from WANDER-FN.
 WANDER-FN is called as (WANDER-FN iafb source applicative), where
 IAFB is called as (IAFB index focus)."
@@ -336,7 +336,7 @@ Setter-like operations leave the source unchanged."
 (defun lg-ifiltered (predicate)
   "Indexed traversal that focuses only values satisfying PREDICATE.
 PREDICATE is called as (PREDICATE index focus)."
-  (lg-indexed-traversal
+  (lg-indexed
    (lambda (iafb source applicative)
      (if (funcall predicate nil source)
          (funcall iafb nil source)
@@ -349,7 +349,7 @@ PREDICATE is called as (PREDICATE index focus)."
 (defun lg-indexed-list-filtered (predicate)
   "Indexed list traversal focused by PREDICATE.
 PREDICATE is called as (PREDICATE index focus)."
-  (lg-indexed-traversal
+  (lg-indexed
    (lambda (iafb source applicative)
      (lg--traverse-list-indexed
       applicative
@@ -561,7 +561,7 @@ When MAYBE is `(lg-just . VALUE)', insert or update KEY with VALUE."
        copy))
     (_ (error "Unsupported keyed source type: %S" source))))
 
-(defun lg-affine-traversal (preview-fn set-fn)
+(defun lg-affine (preview-fn set-fn)
   "Build an affine traversal from PREVIEW-FN and SET-FN.
 PREVIEW-FN must return tagged maybe (`lg-nothing' or `(lg-just . FOCUS)').
 SET-FN is called as (SET-FN source new-focus)."
@@ -577,13 +577,13 @@ SET-FN is called as (SET-FN source new-focus)."
                      (funcall afb (cdr result)))
           (funcall pure source))))))
 
-(defalias 'lg--affine-traversal #'lg-affine-traversal)
+(defalias 'lg--affine-traversal #'lg-affine)
 
 (defun lg-ix (key &optional testfn)
   "Affine traversal focusing existing KEY in keyed SOURCE.
 SOURCE can be plist, alist, or hash table.
 TESTFN applies to plist/alist key comparisons."
-  (lg-affine-traversal
+  (lg-affine
    (lambda (source)
      (lg--keyed-present-and-value source key testfn))
    (lambda (source new-focus)
@@ -602,7 +602,7 @@ TESTFN applies to plist/alist key comparisons."
    (lambda (source maybe)
      (lg--keyed-set-maybe source key maybe testfn))))
 
-(defun lg-hash-key-traversal (key)
+(defun lg-hash-key (key)
   "Affine traversal focusing existing KEY in a hash table."
   (lg-ix key))
 
@@ -809,24 +809,6 @@ Signals `lg-no-focus' when no focus exists."
   "Compose OPTICS at macro expansion time."
   `(lg-compose ,@optics))
 
-(defmacro lg-over-> (source &rest steps)
-  "Thread SOURCE through `lg-over' steps.
-Each step is (OPTIC FN)."
-  (let ((result source))
-    (dolist (step steps result)
-      (let ((optic (car step))
-            (fn (cadr step)))
-        (setq result `(lg-over ,optic ,fn ,result))))))
-
-(defmacro lg-set-> (source &rest steps)
-  "Thread SOURCE through `lg-set' steps.
-Each step is (OPTIC VALUE)."
-  (let ((result source))
-    (dolist (step steps result)
-      (let ((optic (car step))
-            (value (cadr step)))
-        (setq result `(lg-set ,optic ,value ,result))))))
-
 (defun lg-non-nil ()
   "A prism that focuses a non-nil value."
   (lg-prism
@@ -834,27 +816,27 @@ Each step is (OPTIC VALUE)."
      (if value (lg-right value) (lg-left nil)))
    #'identity))
 
-(defun lg-car-lens ()
+(defun lg-car ()
   "Lens focusing car of a cons cell."
   (lg-lens #'car (lambda (source new-focus) (cons new-focus (cdr source)))))
 
-(defun lg-cdr-lens ()
+(defun lg-cdr ()
   "Lens focusing cdr of a cons cell."
   (lg-lens #'cdr (lambda (source new-focus) (cons (car source) new-focus))))
 
-(defun lg-list-traversal ()
+(defun lg-list ()
   "Traversal over all elements in a list."
   (lg-traversal
    (lambda (afb source applicative)
      (lg--traverse-list applicative afb source))))
 
-(defun lg-indexed-list-traversal ()
+(defun lg-indexed-list ()
   "Indexed traversal over all elements in a list."
-  (lg-indexed-traversal
+  (lg-indexed
    (lambda (iafb source applicative)
      (lg--traverse-list-indexed applicative iafb source))))
 
-(defun lg-vector-traversal ()
+(defun lg-vector ()
   "Traversal over all elements in a vector."
   (lg-traversal
    (lambda (afb source applicative)
@@ -863,7 +845,7 @@ Each step is (OPTIC VALUE)."
                 #'vconcat
                 (lg--traverse-list applicative afb (append source nil)))))))
 
-(defun lg-string-traversal ()
+(defun lg-string ()
   "Traversal over all characters in a string."
   (lg-traversal
    (lambda (afb source applicative)
@@ -876,7 +858,7 @@ Each step is (OPTIC VALUE)."
                    (funcall afb (char-to-string character)))
                  (string-to-list source)))))))
 
-(defun lg-nth-lens (index)
+(defun lg-nth (index)
   "Lens focusing INDEX in a list.
 Signals when INDEX is out of range."
   (lg-lens
@@ -891,12 +873,12 @@ Signals when INDEX is out of range."
        (setf (nth index result) new-focus)
        result))))
 
-(defun lg-plist-key-traversal (key &optional testfn)
+(defun lg-plist-key (key &optional testfn)
   "Affine traversal focusing KEY in a plist.
 TESTFN defaults to `eq'."
   (lg-ix key (or testfn #'eq)))
 
-(defun lg-alist-key-traversal (key &optional testfn)
+(defun lg-alist-key (key &optional testfn)
   "Affine traversal focusing KEY in an alist.
 TESTFN defaults to `equal'."
   (lg-ix key (or testfn #'equal)))

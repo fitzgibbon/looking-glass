@@ -17,19 +17,19 @@
       (push (lg-test--random-int) result))))
 
 (ert-deftest lg-lens-view-set-over ()
-  (let ((optic (lg-car-lens)))
+  (let ((optic (lg-car)))
     (should (equal (lg-view optic '(1 . 2)) 1))
     (should (equal (lg-set optic 9 '(1 . 2)) '(9 . 2)))
     (should (equal (lg-over optic (lambda (x) (+ x 3)) '(1 . 2)) '(4 . 2)))))
 
 (ert-deftest lg-compose-nested-pairs ()
   (let* ((nested '((1 . 2) . 3))
-         (optic (lg-compose (lg-cdr-lens) (lg-car-lens))))
+         (optic (lg-compose (lg-cdr) (lg-car))))
     (should (equal (lg-view optic nested) 2))
     (should (equal (lg-set optic 7 nested) '((1 . 7) . 3)))))
 
 (ert-deftest lg-traversal-list-over-and-fold ()
-  (let ((optic (lg-list-traversal)))
+  (let ((optic (lg-list)))
     (should (equal (lg-over optic (lambda (x) (* x 10)) '(1 2 3)) '(10 20 30)))
     (should (equal (lg-to-list-of optic '(1 2 3)) '(1 2 3)))))
 
@@ -47,7 +47,7 @@
     (should (equal (lg-review just 7) '(just . 7)))
     (should (equal (lg-review iso "42") 42))
     (should (equal (lg-review composed "9") '(just . 9)))
-    (should-error (lg-review (lg-list-traversal) 1))))
+    (should-error (lg-review (lg-list) 1))))
 
 (ert-deftest lg-either-core-and-prisms ()
   (should (lg-either-p (lg-left 1)))
@@ -104,7 +104,7 @@
     (should-error (lg-review optic '(:a 1 :a 2)))))
 
 (ert-deftest lg-preview-result-disambiguates-present-nil ()
-  (let* ((optic (lg-plist-key-traversal :name))
+  (let* ((optic (lg-plist-key :name))
          (present-nil '(:name nil :age 10))
          (missing '(:age 10)))
     (should (equal (lg-preview-result optic present-nil) (lg-just nil)))
@@ -113,23 +113,23 @@
     (should-not (lg-has optic missing))))
 
 (ert-deftest lg-view-non-nil-signals ()
-  (let ((optic (lg-plist-key-traversal :name)))
+  (let ((optic (lg-plist-key :name)))
     (should-error (lg-view-non-nil optic '(:name nil)) :type 'lg-expected-non-nil)
     (should (equal (lg-view-non-nil optic '(:name "Ada")) "Ada"))))
 
-(ert-deftest lg-alist-key-traversal ()
-  (let ((optic (lg-alist-key-traversal "x" #'string=)))
+(ert-deftest lg-alist-key ()
+  (let ((optic (lg-alist-key "x" #'string=)))
     (should (equal (lg-preview-result optic '(("x" . nil) ("y" . 2))) (lg-just nil)))
     (should (equal (lg-over optic (lambda (_v) 9) '(("x" . nil) ("y" . 2)))
                    '(("x" . 9) ("y" . 2))))))
 
 (ert-deftest lg-vector-and-string-traversals ()
-  (should (equal (lg-over (lg-vector-traversal) (lambda (x) (+ x 1)) [1 2 3]) [2 3 4]))
-  (should (equal (lg-over (lg-string-traversal) #'upcase "abc") "ABC"))
-  (should (equal (lg-to-list-of (lg-string-traversal) "ab") '("a" "b"))))
+  (should (equal (lg-over (lg-vector) (lambda (x) (+ x 1)) [1 2 3]) [2 3 4]))
+  (should (equal (lg-over (lg-string) #'upcase "abc") "ABC"))
+  (should (equal (lg-to-list-of (lg-string) "ab") '("a" "b"))))
 
 (ert-deftest lg-indexed-list-base-and-ops ()
-  (let ((optic (lg-indexed-list-traversal)))
+  (let ((optic (lg-indexed-list)))
     (should (equal (lg-ito-list-of optic '(10 nil 30))
                    '((0 . 10) (1) (2 . 30))))
     (should (equal (lg-ipreview-result optic '(10 nil 30)) (lg-just '(0 . 10))))
@@ -138,18 +138,18 @@
                    '(10 99 30)))))
 
 (ert-deftest lg-indexed-reindexing ()
-  (let* ((base (lg-indexed-list-traversal))
+  (let* ((base (lg-indexed-list))
          (shifted (lg-ireindexed (lambda (index) (+ index 10)) base)))
     (should (equal (lg-ito-list-of shifted '(4 5)) '((10 . 4) (11 . 5))))
     (should (equal (lg-iover shifted (lambda (i x) (+ i x)) '(4 5)) '(14 16)))))
 
 (ert-deftest lg-derived-getter-and-folds ()
   (let* ((getter (lg-getter #'length))
-         (list-optic (lg-list-traversal)))
+         (list-optic (lg-list)))
     (should (equal (lg-view getter '(a b c)) 3))
     (should (equal (lg-over getter (lambda (x) (+ x 1)) '(a b c)) '(a b c)))
     (should (= (lg-foldl-of list-optic #'+ 0 '(1 2 3 4)) 10))
-    (should (= (lg-ifoldl-of (lg-indexed-list-traversal)
+    (should (= (lg-ifoldl-of (lg-indexed-list)
                              (lambda (acc i x) (+ acc (* i x)))
                              0
                              '(2 3 4))
@@ -171,23 +171,27 @@
     (should (equal (lg-ito-list-of i-only 99) '((nil . 99))))))
 
 (ert-deftest lg-non-nil-helpers-and-macros ()
-  (let* ((optic (lg-required (lg-plist-key-traversal :name)))
-         (pair-optic (lg-optic (lg-cdr-lens) (lg-car-lens))))
+  (let* ((optic (lg-required (lg-plist-key :name)))
+         (pair-optic (lg-optic (lg-cdr) (lg-car))))
     (should (equal (lg-preview-or "unknown" optic '(:name "Ada")) "Ada"))
     (should (equal (lg-preview-or "unknown" optic '(:name nil)) "unknown"))
-    (should (equal (lg-over-> '(1 . 2)
-                              ((lg-car-lens) (lambda (x) (+ x 10)))
-                              ((lg-cdr-lens) (lambda (x) (* x 2))))
+    (should (equal (lg-over (lg-cdr)
+                            (lambda (x) (* x 2))
+                            (lg-over (lg-car)
+                                     (lambda (x) (+ x 10))
+                                     '(1 . 2)))
                    '(11 . 4)))
-    (should (equal (lg-set-> '(1 . 2)
-                             ((lg-car-lens) 7)
-                             ((lg-cdr-lens) 9))
+    (should (equal (lg-set (lg-cdr)
+                           9
+                           (lg-set (lg-car)
+                                   7
+                                   '(1 . 2)))
                    '(7 . 9)))
     (should (equal (lg-view pair-optic '((1 . 2) . 3)) 2))))
 
 (ert-deftest lg-extension-point-custom-affine-optic ()
   (let ((optic
-         (lg-affine-traversal
+         (lg-affine
            (lambda (source)
              (if (numberp source) (lg-just source) lg-nothing))
            (lambda (_source new-focus)
@@ -231,8 +235,8 @@
       (should (= (hash-table-count removed) 1)))))
 
 (ert-deftest lg-fold-review-and-indexed-combinators ()
-  (let* ((tr (lg-list-traversal))
-         (itr (lg-indexed-list-traversal))
+  (let* ((tr (lg-list))
+         (itr (lg-indexed-list))
          (reviewer (lg-unto (lambda (x) (list :wrapped x)))))
     (should (equal (lg-first-of tr '(4 5 6)) 4))
     (should (equal (lg-last-of tr '(4 5 6)) 6))
@@ -250,9 +254,9 @@
     (should (equal (lg-reviews reviewer #'car 9) :wrapped))))
 
 (ert-deftest lg-randomized-core-laws ()
-  (let ((lens (lg-car-lens))
+  (let ((lens (lg-car))
         (prism (lg-non-nil))
-        (traversal (lg-list-traversal)))
+        (traversal (lg-list)))
     (dotimes (_ 100)
       (let* ((pair (cons (lg-test--random-int) (lg-test--random-int)))
              (v1 (lg-test--random-int))

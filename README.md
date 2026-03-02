@@ -11,12 +11,12 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 (require 'looking-glass)
 
 ;; Compose lenses
-(setq pair-optic (lg-compose (lg-cdr-lens) (lg-car-lens)))
+(setq pair-optic (lg-compose (lg-cdr) (lg-car)))
 (lg-view pair-optic '((1 . 2) . 3))
 ;; => 2
 
 ;; Update through a traversal
-(lg-over (lg-list-traversal) (lambda (x) (* x 10)) '(1 2 3))
+(lg-over (lg-list) (lambda (x) (* x 10)) '(1 2 3))
 ;; => (10 20 30)
 
 ;; Prism preview/review
@@ -43,7 +43,7 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ;; => (:name "Ada")
 
 ;; Indexed traversal
-(lg-ito-list-of (lg-indexed-list-traversal) '(10 11 12))
+(lg-ito-list-of (lg-indexed-list) '(10 11 12))
 ;; => ((0 . 10) (1 . 11) (2 . 12))
 
 ;; Either prisms
@@ -55,9 +55,9 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 
 ## Main API groups
 
-- Core constructors: `lg-iso`, `lg-lens`, `lg-prism`, `lg-traversal`, `lg-affine-traversal`
+- Core constructors: `lg-iso`, `lg-lens`, `lg-prism`, `lg-traversal`, `lg-affine`
 - Sum-type helpers: `lg-just`/`lg-nothing` (Maybe), `lg-left`/`lg-right` (Either)
-- Keyed optics: `lg-ix`, `lg-at`, `lg-plist-key-traversal`, `lg-alist-key-traversal`, `lg-hash-key-traversal`
+- Keyed optics: `lg-ix`, `lg-at`, `lg-plist-key`, `lg-alist-key`, `lg-hash-key`
 - Sum-type optics: `lg-just-o`, `lg-left-o`, `lg-right-o`
 - Viewing and updates: `lg-view`, `lg-preview`, `lg-preview-result`, `lg-over`, `lg-set`
 - Folds: `lg-to-list-of`, `lg-first-of`, `lg-last-of`, `lg-find-of`, `lg-any-of`, `lg-all-of`
