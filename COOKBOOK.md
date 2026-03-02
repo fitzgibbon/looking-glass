@@ -58,6 +58,15 @@ Practical examples for common Emacs Lisp data transformations.
 
 (lg-set (lg-at :age) lg-nothing person)
 ;; => (:name "Ada")
+
+(lg-view (lg-at :city) person)
+;; => lg-nothing
+
+(lg-set (lg-at :nickname) (lg-just nil) person)
+;; => (:name "Ada" :age 10 :nickname nil)
+
+(lg-view (lg-compose (lg-unmaybe) (lg-at :city)) person)
+;; => nil
 ```
 
 ## Keep missing and present-nil distinct
@@ -65,10 +74,10 @@ Practical examples for common Emacs Lisp data transformations.
 ```elisp
 (setq with-nil '(:name nil))
 
-(lg-preview-result (lg-ix :name) with-nil)
+(lg-preview (lg-ix :name) with-nil)
 ;; => (lg-just)
 
-(lg-preview-result (lg-ix :missing) with-nil)
+(lg-preview (lg-ix :missing) with-nil)
 ;; => lg-nothing
 ```
 
@@ -134,10 +143,10 @@ Practical examples for common Emacs Lisp data transformations.
 
 ```elisp
 (lg-preview (lg-number-string-prism) "42")
-;; => 42
+;; => (lg-just . 42)
 
 (lg-preview (lg-number-string-prism) "42x")
-;; => nil
+;; => lg-nothing
 
 (lg-review (lg-number-string-prism) -3.5)
 ;; => "-3.5"

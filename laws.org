@@ -22,10 +22,11 @@
 * Nil guarantees and disambiguation
 
 - Presence is represented separately from value for preview operations:
-  - `lg-preview-result` returns tagged maybe: `lg-nothing` or `(lg-just . VALUE)`.
+  - `lg-preview` returns tagged maybe: `lg-nothing` or `(lg-just . VALUE)`.
   - `lg-nothing` means missing focus; `(lg-just . nil)` means present focus with nil value.
 
-- `lg-preview` alone is ambiguous for missing vs present-nil and should be used when this ambiguity is acceptable.
+- `lg-unmaybe` is intentionally lossy (`lg-nothing` and `(lg-just . nil)` both collapse to nil),
+  so it is ergonomic but does not satisfy full lens roundtrip laws.
 
 - `lg-view` signals `lg-no-focus` on missing focus.
 

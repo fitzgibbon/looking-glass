@@ -13,7 +13,7 @@ This is a grouped reference of public APIs in `looking-glass`.
 ### Lens
 
 - Constructor: `lg-lens`
-- Common lenses: `lg-car`, `lg-cdr`, `lg-nth`, `lg-at`
+- Common lenses: `lg-car`, `lg-cdr`, `lg-nth`, `lg-at`, `lg-unmaybe`
 
 ### Prism
 
@@ -54,9 +54,10 @@ This is a grouped reference of public APIs in `looking-glass`.
 - `lg-view`
 - `lg-view-non-nil`
 - `lg-preview`
-- `lg-preview-result`
+- `lg-preview-maybe` (alias)
 - `lg-preview-or`
-- `lg-ipreview-result`
+- `lg-ipreview`
+- `lg-ipreview-maybe` (alias)
 - `lg-has`
 
 ### Update
@@ -92,10 +93,10 @@ This is a grouped reference of public APIs in `looking-glass`.
 
 ### Keyed structures
 
-- Generic keyed: `lg-ix`, `lg-at`
+- Generic keyed: `lg-ix`, `lg-ix-maybe`, `lg-at`, `lg-at-maybe` (alias)
 - Plist helpers: `lg-plist-key`
 - Alist helpers: `lg-alist-key`
-- Hash helpers: `lg-hash-key`, `lg-hash-key-at`
+- Hash helpers: `lg-hash-key`, `lg-hash-key-at`, `lg-hash-key-at-maybe`
 
 ### Maybe/Either-style values
 

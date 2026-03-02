@@ -37,7 +37,7 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 (setq non-nil (lg-non-nil))
 
 (lg-preview non-nil nil)
-;; => nil
+;; => lg-nothing
 
 (lg-review non-nil 42)
 ;; => 42
@@ -48,10 +48,10 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ```elisp
 (setq user '(:name nil :age 10))
 
-(lg-preview-result (lg-ix :name) user)
+(lg-preview (lg-ix :name) user)
 ;; => (lg-just)
 
-(lg-preview-result (lg-ix :missing) user)
+(lg-preview (lg-ix :missing) user)
 ;; => lg-nothing
 ```
 
@@ -65,7 +65,7 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ;; => (:name "Ada" :age 10)
 ```
 
-### 6) Use `at` for insert/update/remove via tagged maybe
+### 6) Use `at` with tagged maybe (or compose `lg-unmaybe`)
 
 ```elisp
 (setq profile '(:name "Ada" :age 10))
@@ -78,6 +78,9 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 
 (lg-set (lg-at :age) lg-nothing profile)
 ;; => (:name "Ada")
+
+(lg-view (lg-compose (lg-unmaybe) (lg-at :name)) profile)
+;; => "Ada"
 ```
 
 ### 7) Indexed traversals expose index + value
@@ -94,7 +97,7 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 
 ```elisp
 (lg-preview (lg-number-string-prism) "  -3.5 ")
-;; => -3.5
+;; => (lg-just . -3.5)
 
 (lg-review (lg-number-string-prism) 15)
 ;; => "15"
@@ -107,7 +110,8 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 - Sum helpers: `lg-just`/`lg-nothing` (Maybe), `lg-left`/`lg-right` (Either)
 - Keyed optics: `lg-ix`, `lg-at`, `lg-plist-key`, `lg-alist-key`, `lg-hash-key`
 - Sum-type optics: `lg-just-o`, `lg-left-o`, `lg-right-o`, `lg-non-nil`
-- Viewing and updates: `lg-view`, `lg-preview`, `lg-preview-result`, `lg-over`, `lg-set`
+- Maybe adapters: `lg-unmaybe`
+- Viewing and updates: `lg-view`, `lg-preview`, `lg-over`, `lg-set`
 - Folds: `lg-to-list-of`, `lg-first-of`, `lg-last-of`, `lg-find-of`, `lg-any-of`, `lg-all-of`
 - Indexed folds and updates: `lg-ito-list-of`, `lg-ifirst-of`, `lg-ilast-of`, `lg-ifind-of`, `lg-iover`
 - Review helpers: `lg-review`, `lg-unto`, `lg-reviews`
@@ -130,6 +134,6 @@ emacs -Q --batch -L . -L bench -l bench/looking-glass-bench.el -f lg-bench-run
 
 ## Notes on semantics
 
-- `lg-preview` returns `nil` for both missing focus and present `nil` focus.
-- `lg-preview-result` returns tagged maybe: `lg-nothing` or `(lg-just . VALUE)`.
-- `lg-at` uses the same tagged maybe shape as its focus, so insertion/removal is explicit.
+- `lg-preview` returns tagged maybe: `lg-nothing` or `(lg-just . VALUE)`.
+- `lg-at` focuses tagged maybe; setting `lg-nothing` removes and setting `(lg-just . VALUE)` inserts/updates.
+- Compose with `lg-unmaybe` when you intentionally want nil-ambiguous shorthand behavior.

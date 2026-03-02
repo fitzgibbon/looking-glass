@@ -12,7 +12,7 @@ but adapted to Emacs Lisp conventions.
 | traversal constructor | `traversal`-style combinators | `wander`-based traversal constructors | `lg-traversal` |
 | affine traversal | commonly encoded via traversal/prism/indexed combinators | `Data.Lens.AffineTraversal` | `lg-affine` |
 | view | `view` / `(^.)` | `view` | `lg-view` |
-| preview | `preview` / `(^?)` | `preview` | `lg-preview`, `lg-preview-result` |
+| preview | `preview` / `(^?)` | `preview` | `lg-preview` |
 | set | `set` / `(.~)` | `set` | `lg-set` |
 | over | `over` / `(%~)` | `over` | `lg-over` |
 | list foci | `toListOf` / `(^..)` | `toListOf` | `lg-to-list-of` |
@@ -27,10 +27,10 @@ but adapted to Emacs Lisp conventions.
 
 - Haskell/PureScript usually use `Maybe` for optional focus values.
 - In Emacs Lisp, `nil` is both false and the empty list, and can be a real payload.
-- `looking-glass` keeps these distinct using tagged maybe values:
+- `looking-glass` defaults to tagged maybe distinction for preview-like reads:
   - missing focus: `lg-nothing`
   - present focus (possibly `nil`): `(lg-just . VALUE)`
-- Use `lg-preview-result` when this distinction matters.
+- Compose with `lg-unmaybe` only when you intentionally want nil-ambiguous behavior.
 
 ### Runtime checks vs static guarantees
 
@@ -59,3 +59,12 @@ but adapted to Emacs Lisp conventions.
 - Keep the profunctor optic core and composition model familiar.
 - Favor explicit, discoverable `lg-` APIs over operator-heavy style.
 - Preserve practical parity for day-to-day transformations on Emacs Lisp structures.
+
+## Current boundary policy (`ix` vs positional optics)
+
+- Haskell `lens` and PureScript `profunctor-lenses` expose a polymorphic `ix` across map-like and sequence-like containers via typeclasses.
+- `looking-glass` currently keeps this boundary explicit:
+  - keyed/map-like containers use `lg-ix` and `lg-at`
+  - sequence positions use positional optics such as `lg-nth`
+- This is intentional in a dynamic language to avoid ambiguous runtime dispatch for list-shaped values (for example, plain lists vs alists).
+- Future unification is possible, but should only happen with a documented dispatch policy and compatibility notes.

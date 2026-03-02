@@ -514,7 +514,7 @@ SOURCE can be plist, alist, or hash table."
     ('plist (lg--plist-present-and-value source key (or testfn #'eq)))
     ('alist (lg--alist-present-and-value source key (or testfn #'equal)))
     ('hash-table
-     (let* ((missing (make-symbol "lg-missing"))
+     (let* ((missing (make-symbol "lg-absent"))
             (value (gethash key source missing)))
         (if (eq value missing)
             lg-nothing
@@ -533,7 +533,7 @@ SOURCE can be plist, alist, or hash table."
          (lg--alist-update-first source key value (or testfn #'equal))
        source))
     ('hash-table
-     (let* ((missing (make-symbol "lg-missing"))
+     (let* ((missing (make-symbol "lg-absent"))
             (current (gethash key source missing)))
        (if (eq current missing)
            source
@@ -590,8 +590,23 @@ TESTFN applies to plist/alist key comparisons."
   (lg-affine
    (lambda (source)
      (lg--keyed-present-and-value source key testfn))
-   (lambda (source new-focus)
-     (lg--keyed-set-existing source key new-focus testfn))))
+    (lambda (source new-focus)
+      (lg--keyed-set-existing source key new-focus testfn))))
+
+(defun lg-ix-maybe (key &optional testfn)
+  "Affine traversal equivalent to `lg-ix'.
+Use with `lg-preview-maybe' to disambiguate missing vs present nil."
+  (lg-ix key testfn))
+
+(defun lg-unmaybe ()
+  "Lens that lossily converts tagged maybe focus to a nil-able value.
+Reading maps `lg-nothing' to nil and `(lg-just . VALUE)' to VALUE.
+Writing maps nil to `lg-nothing' and non-nil values to `(lg-just . VALUE)'."
+  (lg-lens
+   (lambda (maybe)
+     (lg-maybe-value maybe))
+   (lambda (_maybe value)
+     (if value (lg-just value) lg-nothing))))
 
 (defun lg-at (key &optional testfn)
   "Lens focusing presence and value of KEY in keyed SOURCE.
@@ -606,6 +621,10 @@ TESTFN applies to plist/alist key comparisons."
    (lambda (source maybe)
      (lg--keyed-set-maybe source key maybe testfn))))
 
+(defun lg-at-maybe (key &optional testfn)
+  "Alias for `lg-at'."
+  (lg-at key testfn))
+
 (defun lg-hash-key (key)
   "Affine traversal focusing existing KEY in a hash table."
   (lg-ix key))
@@ -613,6 +632,10 @@ TESTFN applies to plist/alist key comparisons."
 (defun lg-hash-key-at (key)
   "Lens focusing presence and value for KEY in a hash table."
   (lg-at key))
+
+(defun lg-hash-key-at-maybe (key)
+  "Lens focusing tagged maybe presence/value for KEY in a hash table."
+  (lg-at-maybe key))
 
 (defun lg-over (optic fn source)
   "Apply FN over OPTIC focus in SOURCE."
@@ -647,18 +670,26 @@ FN is called as (FN index focus)."
   (cl-reduce fn (lg-to-list-of optic source) :initial-value initial))
 
 (defun lg-first-of (optic source)
-  "Return first focus of OPTIC in SOURCE, or nil when absent."
-  (lg-maybe-value (lg-preview-result optic source)))
+  "Return first focus of OPTIC in SOURCE as tagged maybe."
+  (lg-preview optic source))
 
 (defun lg-last-of (optic source)
-  "Return last focus of OPTIC in SOURCE, or nil when absent."
+  "Return last focus of OPTIC in SOURCE as tagged maybe."
   (let ((focuses (lg-to-list-of optic source)))
-    (when focuses
-      (car (last focuses)))))
+    (if focuses
+        (lg-just (car (last focuses)))
+      lg-nothing)))
 
 (defun lg-find-of (optic predicate source)
-  "Return first focus matching PREDICATE for OPTIC in SOURCE."
-  (cl-find-if predicate (lg-to-list-of optic source)))
+  "Return first focus matching PREDICATE for OPTIC in SOURCE as tagged maybe."
+  (let* ((missing (make-symbol "lg-absent"))
+         (found (cl-reduce (lambda (acc value)
+                             (if (eq acc missing)
+                                 (if (funcall predicate value) value missing)
+                               acc))
+                           (lg-to-list-of optic source)
+                           :initial-value missing)))
+    (if (eq found missing) lg-nothing (lg-just found))))
 
 (defun lg-ifoldl-of (optic fn initial source)
   "Left-fold indexed OPTIC focuses in SOURCE with FN and INITIAL.
@@ -669,21 +700,29 @@ FN is called as (FN acc index focus)."
              :initial-value initial))
 
 (defun lg-ifirst-of (optic source)
-  "Return first indexed focus of OPTIC in SOURCE, or nil when absent."
-  (lg-maybe-value (lg-ipreview-result optic source)))
+  "Return first indexed focus of OPTIC in SOURCE as tagged maybe."
+  (lg-ipreview optic source))
 
 (defun lg-ilast-of (optic source)
-  "Return last indexed focus of OPTIC in SOURCE, or nil when absent."
+  "Return last indexed focus of OPTIC in SOURCE as tagged maybe."
   (let ((focuses (lg-ito-list-of optic source)))
-    (when focuses
-      (car (last focuses)))))
+    (if focuses
+        (lg-just (car (last focuses)))
+      lg-nothing)))
 
 (defun lg-ifind-of (optic predicate source)
-  "Return first indexed focus matching PREDICATE in SOURCE.
+  "Return first indexed focus matching PREDICATE as tagged maybe.
 PREDICATE is called as (PREDICATE index focus)."
-  (cl-find-if (lambda (indexed-focus)
-                (funcall predicate (car indexed-focus) (cdr indexed-focus)))
-              (lg-ito-list-of optic source)))
+  (let* ((missing (make-symbol "lg-absent"))
+         (found (cl-reduce (lambda (acc indexed-focus)
+                             (if (eq acc missing)
+                                 (if (funcall predicate (car indexed-focus) (cdr indexed-focus))
+                                     indexed-focus
+                                   missing)
+                               acc))
+                           (lg-ito-list-of optic source)
+                           :initial-value missing)))
+    (if (eq found missing) lg-nothing (lg-just found))))
 
 (defun lg-imap-of (optic fn source)
   "Indexed map over OPTIC in SOURCE using FN.
@@ -741,7 +780,7 @@ BUILDER maps focus-domain values into source-domain values."
 
 (defun lg-preview-or (default optic source)
   "Preview OPTIC in SOURCE, returning DEFAULT only when missing."
-  (let ((result (lg-preview-result optic source)))
+  (let ((result (lg-preview optic source)))
     (if (lg-just-p result) (cdr result) default)))
 
 (defun lg-to-list-of (optic source)
@@ -769,7 +808,7 @@ Each item is (INDEX . FOCUS)."
                        (make-lg-const :value (list (cons index focus)))))))
     (lg-const-value (funcall transform source))))
 
-(defun lg-ipreview-result (optic source)
+(defun lg-ipreview (optic source)
   "Return a disambiguated indexed preview for OPTIC in SOURCE.
 Returns tagged maybe containing (INDEX . VALUE)."
   (let ((focuses (lg-ito-list-of optic source)))
@@ -777,7 +816,7 @@ Returns tagged maybe containing (INDEX . VALUE)."
         (lg-just (car focuses))
       lg-nothing)))
 
-(defun lg-preview-result (optic source)
+(defun lg-preview (optic source)
   "Return a disambiguated preview for OPTIC in SOURCE.
 Returns tagged maybe (`lg-nothing' or `(lg-just . VALUE)').
 VALUE can be nil when nil is an actual focus value."
@@ -786,18 +825,17 @@ VALUE can be nil when nil is an actual focus value."
         (lg-just (car focuses))
       lg-nothing)))
 
-(defun lg-preview (optic source)
-  "Return first focus value for OPTIC in SOURCE, or nil when absent."
-  (lg-maybe-value (lg-preview-result optic source)))
+(defalias 'lg-ipreview-maybe #'lg-ipreview)
+(defalias 'lg-preview-maybe #'lg-preview)
 
 (defun lg-has (optic source)
   "Return non-nil when OPTIC has at least one focus in SOURCE."
-  (lg-just-p (lg-preview-result optic source)))
+  (lg-just-p (lg-preview optic source)))
 
 (defun lg-view (optic source)
   "View exactly one expected focus from OPTIC in SOURCE.
 Signals `lg-no-focus' when no focus exists."
-  (let ((result (lg-preview-result optic source)))
+  (let ((result (lg-preview optic source)))
     (if (lg-just-p result)
         (cdr result)
       (signal 'lg-no-focus (list optic source)))))
