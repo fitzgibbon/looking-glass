@@ -590,6 +590,30 @@ IAFB is called as (IAFB index focus)."
                 (error "Indexed optic requires indexed profunctor reindex"))
               (lg--run-indexed-optic optic p (funcall reindex index-fn pib))))))
 
+(defun lg-as-indexed (optic)
+  "Lift unindexed OPTIC into an indexed optic with nil indices."
+  (lg-indexed
+   (lambda (iafb source applicative)
+     (let* ((profunctor (lg--star-profunctor applicative))
+            (transform (lg--run-optic
+                        optic
+                        profunctor
+                        (lambda (focus)
+                          (funcall iafb nil focus)))))
+       (funcall transform source)))))
+
+(defun lg-unindexed (optic)
+  "Drop index information from indexed OPTIC."
+  (lg-traversal
+   (lambda (afb source applicative)
+     (let* ((profunctor (lg--indexed-star-profunctor applicative))
+            (transform (lg--run-indexed-optic
+                        optic
+                        profunctor
+                        (lambda (_index focus)
+                          (funcall afb focus)))))
+       (funcall transform source)))))
+
 (defun lg-getter (getter-fn)
   "Build a read-only getter optic from GETTER-FN.
 Setter-like operations leave the source unchanged."
@@ -921,8 +945,16 @@ TESTFN applies to plist/alist key comparisons."
                      optic
                      profunctor
                      (lambda (focus)
-                       (make-lg-identity :value (funcall fn focus))))))
+                        (make-lg-identity :value (funcall fn focus))))))
     (lg-identity-value (funcall transform source))))
+
+(defun lg-map-of (optic fn source)
+  "Map FN over OPTIC in SOURCE."
+  (lg-over optic fn source))
+
+(defun lg-for-of (optic source fn)
+  "Map FN over OPTIC in SOURCE with source-first argument order."
+  (lg-over optic fn source))
 
 (defun lg-iover (optic fn source)
   "Apply indexed FN over OPTIC focus in SOURCE.
@@ -934,12 +966,26 @@ FN is called as (FN index focus)."
                      profunctor
                      (lambda (index focus)
                        (make-lg-identity
-                        :value (funcall fn index focus))))))
+                         :value (funcall fn index focus))))))
     (lg-identity-value (funcall transform source))))
+
+(defun lg-imap-of (optic fn source)
+  "Indexed map over OPTIC in SOURCE using FN.
+FN is called as (FN index focus)."
+  (lg-iover optic fn source))
+
+(defun lg-ifor-of (optic source fn)
+  "Indexed map over OPTIC in SOURCE with source-first order.
+FN is called as (FN index focus)."
+  (lg-iover optic fn source))
 
 (defun lg-set (optic value source)
   "Set OPTIC focus to VALUE in SOURCE."
   (lg-over optic (lambda (_focus) value) source))
+
+(defun lg-iset (optic value source)
+  "Set indexed OPTIC focus to VALUE in SOURCE, ignoring indices."
+  (lg-iover optic (lambda (_index _focus) value) source))
 
 (defun lg-foldl-of (optic fn initial source)
   "Left-fold OPTIC focuses in SOURCE with FN and INITIAL."
@@ -996,14 +1042,14 @@ PREDICATE is called as (PREDICATE index focus)."
                                      indexed-focus
                                    missing)
                                acc))
-                           (lg-ito-list-of optic source)
-                           :initial-value missing)))
+                            (lg-ito-list-of optic source)
+                            :initial-value missing)))
     (if (eq found missing) lg-nothing (lg-just found))))
 
-(defun lg-imap-of (optic fn source)
-  "Indexed map over OPTIC in SOURCE using FN.
-FN is called as (FN index focus)."
-  (lg-iover optic fn source))
+(defun lg-ipreview-or (default optic source)
+  "Preview indexed OPTIC in SOURCE, returning DEFAULT only when missing."
+  (let ((result (lg-ipreview optic source)))
+    (if (lg-just-p result) (cdr result) default)))
 
 (defun lg-any-of (optic predicate source)
   "Return non-nil when any OPTIC focus in SOURCE satisfies PREDICATE."
@@ -1104,9 +1150,21 @@ VALUE can be nil when nil is an actual focus value."
 (defalias 'lg-ipreview-maybe #'lg-ipreview)
 (defalias 'lg-preview-maybe #'lg-preview)
 
+(defun lg-ihas (optic source)
+  "Return non-nil when indexed OPTIC has at least one focus in SOURCE."
+  (lg-just-p (lg-ipreview optic source)))
+
 (defun lg-has (optic source)
   "Return non-nil when OPTIC has at least one focus in SOURCE."
   (lg-just-p (lg-preview optic source)))
+
+(defun lg-iview (optic source)
+  "View exactly one indexed focus from OPTIC in SOURCE.
+Signals `lg-no-focus' when no focus exists."
+  (let ((result (lg-ipreview optic source)))
+    (if (lg-just-p result)
+        (cdr result)
+      (signal 'lg-no-focus (list optic source)))))
 
 (defun lg-view (optic source)
   "View exactly one expected focus from OPTIC in SOURCE.
@@ -1123,9 +1181,34 @@ Signals `lg-no-focus' when no focus exists."
         value
       (signal 'lg-expected-non-nil (list optic source)))))
 
+(defun lg-iview-non-nil (optic source)
+  "View indexed focus with OPTIC in SOURCE and require non-nil value."
+  (let ((indexed-value (lg-iview optic source)))
+    (if (cdr indexed-value)
+        indexed-value
+      (signal 'lg-expected-non-nil (list optic source)))))
+
 (defmacro lg-optic (&rest optics)
   "Compose OPTICS at macro expansion time."
   `(lg-compose ,@optics))
+
+(defun lg-re (optic)
+  "Reverse OPTIC when possible.
+For isomorphisms, this is the true inverse optic.
+For other reviewed optics, writing uses `lg-view' and may signal.
+Signals when OPTIC does not support review."
+  (let ((reviewer (lg-optic-review optic)))
+    (unless reviewer
+      (error "Optic does not support review"))
+    (let ((viewer (lambda (value)
+                    (lg-view optic value))))
+      (make-lg-optic
+       :apply (lambda (p pab)
+                (funcall (lg-profunctor-dimap p)
+                         reviewer
+                         viewer
+                         pab))
+       :review viewer))))
 
 (defconst lg-non-nil
   (lg-prism
@@ -1154,6 +1237,18 @@ Signals `lg-no-focus' when no focus exists."
      (lg--traverse-list-indexed applicative iafb source)))
   "Indexed traversal over all elements in a list.")
 
+(defconst lg-indexed-vector
+  (lg-indexed
+   (lambda (iafb source applicative)
+     (let ((fmap (lg-applicative-fmap applicative)))
+       (funcall fmap
+                #'vconcat
+                (lg--traverse-list-indexed
+                 applicative
+                 iafb
+                 (append source nil))))))
+  "Indexed traversal over all elements in a vector.")
+
 (defconst lg-vector
   (lg-traversal
    (lambda (afb source applicative)
@@ -1171,33 +1266,49 @@ Signals `lg-no-focus' when no focus exists."
                 (lambda (parts) (apply #'concat parts))
                 (lg--traverse-list
                  applicative
-                 (lambda (character)
-                   (funcall afb (char-to-string character)))
-                 (string-to-list source))))))
+                  (lambda (character)
+                    (funcall afb (char-to-string character)))
+                  (string-to-list source))))))
   "Traversal over all characters in a string.")
 
+(defconst lg-indexed-string
+  (lg-indexed
+   (lambda (iafb source applicative)
+     (let ((fmap (lg-applicative-fmap applicative)))
+       (funcall fmap
+                (lambda (parts) (apply #'concat parts))
+                (lg--traverse-list-indexed
+                 applicative
+                 (lambda (index character)
+                   (funcall iafb index (char-to-string character)))
+                 (string-to-list source))))))
+  "Indexed traversal over all characters in a string.")
+
 (defun lg-nth (index)
-  "Lens focusing INDEX in a list or vector.
+  "Lens focusing INDEX in a list, vector, or string.
+For strings, focus values are character codes.
 Signals when INDEX is out of range."
   (lg-lens
    (lambda (source)
-      (unless (or (listp source) (vectorp source))
-        (error "Expected list or vector source"))
-      (unless (and (>= index 0) (< index (length source)))
-        (error "Index %s out of range" index))
-      (if (vectorp source)
-          (aref source index)
-        (nth index source)))
+       (unless (or (listp source) (vectorp source) (stringp source))
+         (error "Expected list, vector, or string source"))
+       (unless (and (>= index 0) (< index (length source)))
+         (error "Index %s out of range" index))
+       (if (or (vectorp source) (stringp source))
+           (aref source index)
+         (nth index source)))
    (lambda (source new-focus)
-      (unless (or (listp source) (vectorp source))
-        (error "Expected list or vector source"))
-      (unless (and (>= index 0) (< index (length source)))
-        (error "Index %s out of range" index))
-      (let ((result (copy-sequence source)))
-        (if (vectorp result)
-            (aset result index new-focus)
-          (setf (nth index result) new-focus))
-        result))))
+       (unless (or (listp source) (vectorp source) (stringp source))
+         (error "Expected list, vector, or string source"))
+       (unless (and (>= index 0) (< index (length source)))
+         (error "Index %s out of range" index))
+       (when (and (stringp source) (not (characterp new-focus)))
+         (error "Expected character focus for string source"))
+       (let ((result (copy-sequence source)))
+         (if (or (vectorp result) (stringp result))
+             (aset result index new-focus)
+           (setf (nth index result) new-focus))
+         result))))
 
 (defun lg-plist-key (key &optional testfn)
   "Affine traversal focusing KEY in a plist.
