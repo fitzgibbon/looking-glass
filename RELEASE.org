@@ -1,0 +1,49 @@
+* Release Process
+
+This project follows semantic versioning (=MAJOR.MINOR.PATCH=).
+
+* Versioning policy
+
+- =MAJOR=: breaking API changes or behavior changes in documented semantics.
+- =MINOR=: backwards-compatible features and new optics/operations.
+- =PATCH=: backwards-compatible bug fixes, perf improvements, and docs/tests-only fixes.
+
+* Release checklist
+
+1. Update version in package headers if needed:
+   - =looking-glass.el=
+   - =looking-glass-pkg.el=
+2. Update =CHANGELOG.org= with a dated entry for the release.
+3. Run tests:
+
+#+begin_src bash
+emacs -Q --batch -L . -L test -l test/looking-glass-test.el -f ert-run-tests-batch-and-exit
+#+end_src
+
+4. Run microbenchmarks and compare against baseline:
+
+#+begin_src bash
+emacs -Q --batch -L . -L bench -l bench/looking-glass-bench.el -f lg-bench-run
+#+end_src
+
+5. Commit release changes.
+6. Tag release:
+
+#+begin_src bash
+git tag -a vX.Y.Z -m "looking-glass vX.Y.Z"
+#+end_src
+
+7. Push commit and tag:
+
+#+begin_src bash
+git push origin main
+git push origin vX.Y.Z
+#+end_src
+
+* v0.1.0 tagging command
+
+After committing release artifacts for 0.1.0:
+
+#+begin_src bash
+git tag -a v0.1.0 -m "looking-glass v0.1.0"
+#+end_src

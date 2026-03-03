@@ -1,0 +1,218 @@
+* looking-glass
+
+=looking-glass= provides profunctor optics for Emacs Lisp.
+
+It includes core optics (=iso=, =lens=, =prism=, =traversal=), indexed variants,
+keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and folding.
+
+* Quickstart
+
+#+begin_src elisp
+(require 'looking-glass)
+(require 'looking-glass-buffer)
+#+end_src
+
+** 1) Read and update nested pair fields
+
+#+begin_src elisp
+(setq pair-optic (lg-compose lg-cdr lg-car))
+
+(lg-view pair-optic '((1 . 2) . 3))
+;; => 2
+
+(lg-set pair-optic 7 '((1 . 2) . 3))
+;; => ((1 . 7) . 3)
+#+end_src
+
+** 1b) Compose with operator-style helpers (including variadic)
+
+#+begin_src elisp
+;; Right-to-left composition (same as `lg-compose`)
+(lg-view (lg<< lg-cdr lg-car) '((1 . 2) . 3))
+;; => 2
+
+;; Left-to-right composition (pipeline style)
+(lg-view (lg>> lg-car lg-cdr) '((1 . 2) . 3))
+;; => 2
+
+;; Both operators are variadic
+(setq source '(:user (:profile [10 20 30])))
+(lg-view (lg<< (lg-nth 1) (lg-ix :profile) (lg-ix :user)) source)
+;; => 20
+
+(lg-view (lg>> (lg-ix :user) (lg-ix :profile) (lg-nth 1)) source)
+;; => 20
+#+end_src
+
+** 2) Update all list items through a traversal
+
+#+begin_src elisp
+(lg-over lg-list (lambda (x) (* x 10)) '(1 2 3))
+;; => (10 20 30)
+#+end_src
+
+** 3) Preview and construct with a prism
+
+#+begin_src elisp
+(setq non-nil lg-non-nil)
+
+(lg-preview non-nil nil)
+;; => lg-nothing
+
+(lg-review non-nil 42)
+;; => 42
+#+end_src
+
+** 4) Distinguish missing focus from present =nil=
+
+#+begin_src elisp
+(setq user '(:name nil :age 10))
+
+(lg-preview (lg-ix :name) user)
+;; => (lg-just)
+
+(lg-preview (lg-ix :missing) user)
+;; => lg-nothing
+#+end_src
+
+** 5) Use =ix= for update-only-when-present
+
+#+begin_src elisp
+(lg-set (lg-ix :age) 11 '(:name "Ada" :age 10))
+;; => (:name "Ada" :age 11)
+
+(lg-set (lg-ix :missing) 11 '(:name "Ada" :age 10))
+;; => (:name "Ada" :age 10)
+#+end_src
+
+** 6) Use =at= with tagged maybe (or compose =lg-unmaybe=)
+
+#+begin_src elisp
+(setq profile '(:name "Ada" :age 10))
+
+(lg-view (lg-at :name) profile)
+;; => (lg-just . "Ada")
+
+(lg-set (lg-at :city) (lg-just "London") profile)
+;; => (:name "Ada" :age 10 :city "London")
+
+(lg-set (lg-at :age) lg-nothing profile)
+;; => (:name "Ada")
+
+(lg-view (lg-compose lg-unmaybe (lg-at :name)) profile)
+;; => "Ada"
+#+end_src
+
+** 7) Indexed traversals expose index + value
+
+#+begin_src elisp
+(lg-ito-list-of lg-indexed-list '(10 11 12))
+;; => ((0 . 10) (1 . 11) (2 . 12))
+
+(lg-iover lg-indexed-list (lambda (i x) (+ i x)) '(10 11 12))
+;; => (10 12 14)
+#+end_src
+
+** 8) Conversion optics
+
+#+begin_src elisp
+(lg-preview lg-number-string "  -3.5 ")
+;; => (lg-just . -3.5)
+
+(lg-review lg-number-string 15)
+;; => "15"
+#+end_src
+
+** 9) Update one list/string/vector position
+
+#+begin_src elisp
+(lg-over (lg-nth 2) (lambda (x) (* x 10)) '(4 5 6 7))
+;; => (4 5 60 7)
+
+(lg-set (lg-nth 1) ?Z "abcd")
+;; => "aZcd"
+#+end_src
+
+** 10) Filter by value or index
+
+#+begin_src elisp
+(setq even-only (lg-filtered (lambda (x) (and (numberp x) (zerop (% x 2))))))
+(lg-over even-only (lambda (x) (* x 10)) 3)
+;; => 3
+
+(setq even-indexes (lg-indexed-list-indices (lambda (i) (zerop (% i 2)))))
+(lg-iover even-indexes (lambda (_i x) (+ x 100)) '(10 11 12 13))
+;; => (110 11 112 13)
+#+end_src
+
+** 11) Parse and edit JSON text with composed optics
+
+#+begin_src elisp
+(lg-over
+ (lg-compose (lg-ix "name") lg-json-parse)
+ #'upcase
+ "{\"name\":\"Ada\",\"age\":10}")
+;; => "{\"name\":\"ADA\",\"age\":10}"
+
+(lg-over
+ (lg-compose (lg-ix "tags") lg-json-parse)
+ (lambda (tags)
+   (let ((copy (copy-sequence tags)))
+     (aset copy 1 (upcase (aref copy 1)))
+     copy))
+ "{\"tags\":[\"elisp\",\"optics\"]}")
+;; => "{\"tags\":[\"elisp\",\"OPTICS\"]}"
+#+end_src
+
+** 12) Traverse JSON object values and members
+
+#+begin_src elisp
+(setq doc (lg-view lg-json-parse "{\"name\":\"Ada\",\"age\":10}"))
+
+(gethash "name" doc)
+;; => "Ada"
+
+(gethash "age" doc)
+;; => 10
+
+(gethash "active" (lg-view lg-json-parse "{\"active\":true}"))
+;; => lg-true
+#+end_src
+
+* Main API groups
+
+- Core constructors: =lg-iso=, =lg-lens=, =lg-prism=, =lg-traversal=, =lg-affine=
+- Composition: =lg-compose=, =lg<<=, =lg>>=, =lg-compose-indexed=, =lg-optic=
+- Sum helpers: =lg-just=/=lg-nothing= (Maybe), =lg-left=/=lg-right= (Either)
+- Keyed optics: =lg-ix=, =lg-at=, =lg-plist-key=, =lg-alist-key=, =lg-hash-key=
+- Sum-type optics: =lg-just-o=, =lg-left-o=, =lg-right-o=, =lg-non-nil=
+- Maybe adapters: =lg-unmaybe=
+- Viewing and updates: =lg-view=, =lg-preview=, =lg-over=, =lg-set=
+- Folds: =lg-to-list-of=, =lg-first-of=, =lg-last-of=, =lg-find-of=, =lg-any-of=, =lg-all-of=
+- Indexed folds and updates: =lg-ito-list-of=, =lg-ifirst-of=, =lg-ilast-of=, =lg-ifind-of=, =lg-iover=
+- Review helpers: =lg-review=, =lg-unto=, =lg-reviews=
+
+** Extension packages
+
+- =looking-glass-buffer=: buffer-oriented optics (=lg-buffer-point=, =lg-buffer-string=, =lg-buffer-region-string=, ...)
+
+* Documentation
+
+- API reference by optic type and data structure: =API-REFERENCE.org=
+- Naming/semantics comparison vs Haskell =lens= and PureScript =profunctor-lenses=: =COMPARISON.org=
+- Changelog: =CHANGELOG.org=
+- Release process and versioning policy: =RELEASE.org=
+
+* Benchmarks
+
+Run the microbenchmark suite:
+
+#+begin_src bash
+emacs -Q --batch -L . -L bench -l bench/looking-glass-bench.el -f lg-bench-run
+#+end_src
+
+* Notes on semantics
+
+- =lg-preview= returns tagged maybe: =lg-nothing= or =(lg-just . VALUE)=.
+- =lg-at= focuses tagged maybe; setting =lg-nothing= removes and setting =(lg-just . VALUE)= inserts/updates.
+- Compose with =lg-unmaybe= when you intentionally want nil-ambiguous shorthand behavior.
