@@ -67,12 +67,6 @@
   unfirst
   unright
   closed
-  wander)
-
-(cl-defstruct lg-indexed-profunctor
-  dimap
-  first
-  right
   wander
   reindex)
 
@@ -408,7 +402,7 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
   "Return Star profunctor for indexed optics over APPLICATIVE.
 The mapping function receives (INDEX FOCUS)."
   (let ((fmap (lg-applicative-fmap applicative)))
-    (make-lg-indexed-profunctor
+    (make-lg-profunctor
      :dimap (lambda (before after indexed-pib)
               (make-lg-indexed
                :run (lambda (_index value)
@@ -452,8 +446,8 @@ The mapping function receives (INDEX FOCUS)."
                  (make-lg-indexed
                   :run (lambda (index focus)
                          (funcall (lg-indexed-run indexed-pib)
-                                  (funcall index-fn index)
-                                  focus)))))))
+                                 (funcall index-fn index)
+                                 focus)))))))
 
 (defun lg--tagged-profunctor ()
   "Return Tagged profunctor implementation."
@@ -658,9 +652,9 @@ When EMPTY is nil, nil is used as the empty value for left branches in Choice."
   "Run OPTIC against PROFUNCTOR using PAB."
   (funcall (lg-optic-apply optic) profunctor pab))
 
-(defun lg--run-indexed-optic (optic indexed-profunctor pib)
-  "Run indexed OPTIC against INDEXED-PROFUNCTOR using PIB."
-  (funcall (lg-indexed-optic-apply optic) indexed-profunctor pib))
+(defun lg--run-indexed-optic (optic profunctor indexed-pib)
+  "Run indexed OPTIC against PROFUNCTOR using INDEXED-PIB."
+  (funcall (lg-indexed-optic-apply optic) profunctor indexed-pib))
 
 (defconst lg-id
   (make-lg-optic :apply (lambda (_p pab) pab))
@@ -1000,7 +994,7 @@ WANDER-FN is called as (WANDER-FN iafb source applicative), where
 IAFB is called as (IAFB index focus)."
   (make-lg-indexed-optic
    :apply (lambda (p indexed-pib)
-            (let ((wander (lg-indexed-profunctor-wander p)))
+            (let ((wander (lg-profunctor-wander p)))
               (unless wander
                 (error "Indexed traversal requires indexed profunctor wander"))
               (funcall wander wander-fn indexed-pib)))))
@@ -1009,7 +1003,7 @@ IAFB is called as (IAFB index focus)."
   "Transform OPTIC indices with INDEX-FN."
   (make-lg-indexed-optic
    :apply (lambda (p indexed-pib)
-            (let ((reindex (lg-indexed-profunctor-reindex p)))
+            (let ((reindex (lg-profunctor-reindex p)))
               (unless reindex
                 (error "Indexed optic requires indexed profunctor reindex"))
               (lg--run-indexed-optic optic p (funcall reindex index-fn indexed-pib))))))
