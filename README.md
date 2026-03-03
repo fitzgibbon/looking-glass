@@ -11,8 +11,6 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 (require 'looking-glass)
 (require 'looking-glass-convert)
 (require 'looking-glass-json)
-(require 'looking-glass-yaml)
-(require 'looking-glass-toml)
 (require 'looking-glass-buffer)
 ```
 
@@ -107,6 +105,55 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ;; => "15"
 ```
 
+### 9) Update one list position
+
+```elisp
+(lg-over (lg-nth 2) (lambda (x) (* x 10)) '(4 5 6 7))
+;; => (4 5 60 7)
+```
+
+### 10) Filter by value or index
+
+```elisp
+(setq even-only (lg-filtered (lambda (x) (and (numberp x) (zerop (% x 2))))))
+(lg-over even-only (lambda (x) (* x 10)) 3)
+;; => 3
+
+(setq even-indexes (lg-indexed-list-indices (lambda (i) (zerop (% i 2)))))
+(lg-iover even-indexes (lambda (_i x) (+ x 100)) '(10 11 12 13))
+;; => (110 11 112 13)
+```
+
+### 11) Parse and edit JSON text with composed optics
+
+```elisp
+(lg-over
+ (lg-compose (lg-json-object-key 'name) lg-json-text-prism)
+ #'upcase
+ "{\"name\":\"Ada\",\"age\":10}")
+;; => "{\"name\":\"ADA\",\"age\":10}"
+
+(lg-over
+ (lg-compose (lg-json-array-index 1)
+             (lg-json-object-key 'tags)
+             lg-json-text-prism)
+ #'upcase
+ "{\"tags\":[\"elisp\",\"optics\"]}")
+;; => "{\"tags\":[\"elisp\",\"OPTICS\"]}"
+```
+
+### 12) Traverse JSON object values and members
+
+```elisp
+(setq doc '((name . "Ada") (age . 10)))
+
+(lg-to-list-of lg-json-values doc)
+;; => ("Ada" 10)
+
+(lg-ito-list-of lg-json-members doc)
+;; => ((name . "Ada") (age . 10))
+```
+
 ## Main API groups
 
 - Core constructors: `lg-iso`, `lg-lens`, `lg-prism`, `lg-traversal`, `lg-affine`
@@ -124,13 +171,10 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 
 - `looking-glass-convert`: conversion optics (`lg-list-vector-iso`, `lg-number-string-prism`, ...)
 - `looking-glass-json`: JSON object/array/scalar/text optics (`lg-json-object-key`, `lg-json-array-index`, `lg-json-text-prism`, ...)
-- `looking-glass-yaml`: YAML mapping/sequence/scalar optics (`lg-yaml-key`, `lg-yaml-index`, ...)
-- `looking-glass-toml`: TOML table/array/scalar optics (`lg-toml-key`, `lg-toml-array-index`, `lg-toml-text-prism`, ...)
 - `looking-glass-buffer`: buffer-oriented optics (`lg-buffer-point`, `lg-buffer-string`, `lg-buffer-region-string`, ...)
 
 ## Documentation
 
-- Cookbook: `COOKBOOK.md`
 - API reference by optic type and data structure: `API-REFERENCE.md`
 - Naming/semantics comparison vs Haskell `lens` and PureScript `profunctor-lenses`: `COMPARISON.md`
 - Changelog: `CHANGELOG.md`

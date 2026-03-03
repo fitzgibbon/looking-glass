@@ -122,19 +122,6 @@ This is a grouped reference of public APIs in `looking-glass`.
 - Scalars/prisms: `lg-json-string`, `lg-json-number`, `lg-json-bool`, `lg-json-null-prism`
 - Text parse/review: `lg-json-text-prism`, `lg-json-parse-string`, `lg-json-render-string`
 
-### YAML (`looking-glass-yaml`)
-
-- Mapping: `lg-yaml-key`, `lg-yaml-key-at`
-- Sequences: `lg-yaml-index`
-- Scalars/prisms: `lg-yaml-string`, `lg-yaml-number`, `lg-yaml-bool`, `lg-yaml-null-prism`
-
-### TOML (`looking-glass-toml`)
-
-- Table keys: `lg-toml-key`, `lg-toml-key-at`
-- Arrays: `lg-toml-array-index`
-- Scalars/prisms: `lg-toml-string`, `lg-toml-number`, `lg-toml-bool`
-- Text parse/review: `lg-toml-text-prism`
-
 ### Buffer (`looking-glass-buffer`)
 
 - Buffer lenses: `lg-buffer-point`, `lg-buffer-mark`, `lg-buffer-string`

@@ -18,6 +18,14 @@
     (should (lg-just-p roundtrip))
     (should (stringp (lg-review lg-json-text-prism (cdr roundtrip)))))
 
+  (should (equal (lg-over
+                  (lg-compose (lg-json-array-index 1)
+                              (lg-json-object-key 'tags)
+                              lg-json-text-prism)
+                  #'upcase
+                  "{\"tags\":[\"elisp\",\"optics\"]}")
+                 "{\"tags\":[\"elisp\",\"OPTICS\"]}"))
+
   (should (equal (lg-preview lg-json-bool t) (lg-just t)))
   (should (equal (lg-preview lg-json-bool :false) (lg-just nil)))
   (should (equal (lg-review lg-json-bool nil) :false))
@@ -32,6 +40,16 @@
                    '(("name" . "Ada") ("age" . 11))))
     (should (equal (lg-ito-list-of lg-json-members doc)
                    '(("name" . "Ada") ("age" . 10))))))
+
+(ert-deftest lg-json-text-prism-works-with-list-arrays ()
+  (let ((lg-json-array-type 'list))
+    (should (equal (lg-over
+                    (lg-compose (lg-json-array-index 1)
+                                (lg-json-object-key 'tags)
+                                lg-json-text-prism)
+                    #'upcase
+                    "{\"tags\":[\"elisp\",\"optics\"]}")
+                   "{\"tags\":[\"elisp\",\"OPTICS\"]}"))))
 
 (provide 'looking-glass-json-test)
 

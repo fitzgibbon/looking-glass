@@ -28,10 +28,10 @@
                  (const :tag "Hash table" hash-table))
   :group 'lisp)
 
-(defcustom lg-json-array-type 'list
+(defcustom lg-json-array-type 'array
   "Default array representation used by JSON parsing optics."
   :type '(choice (const :tag "List" list)
-                 (const :tag "Vector" vector))
+                 (const :tag "Array (vector)" array))
   :group 'lisp)
 
 (defcustom lg-json-null-object lg-json-null
@@ -377,9 +377,42 @@ Optional OBJECT-TYPE, ARRAY-TYPE, NULL-OBJECT and FALSE-OBJECT override defaults
 (defun lg-json-render-string (value &optional null-object false-object)
   "Render VALUE into JSON text.
 Optional NULL-OBJECT and FALSE-OBJECT override defaults."
-  (json-serialize value
+  (json-serialize (lg-json--normalize-for-serialize value)
                   :null-object (or null-object lg-json-null-object)
                   :false-object (or false-object lg-json-false-object)))
+
+(defun lg-json--normalize-for-serialize (value)
+  "Normalize VALUE into shapes accepted by `json-serialize'."
+  (cond
+   ((vectorp value)
+    (vconcat (mapcar #'lg-json--normalize-for-serialize (append value nil))))
+   ((hash-table-p value)
+    (let ((copy (copy-hash-table value)))
+      (maphash (lambda (key item)
+                 (puthash key (lg-json--normalize-for-serialize item) copy))
+               value)
+      copy))
+   ((lg-json--alist-p value)
+    (mapcar (lambda (entry)
+              (cons (car entry)
+                    (lg-json--normalize-for-serialize (cdr entry))))
+            value))
+   ((and (listp value)
+         (zerop (% (length value) 2))
+         (cl-loop for rest on value by #'cddr
+                  always (symbolp (car rest))))
+    (let ((rest value)
+          (result nil))
+      (while rest
+        (setq result
+              (append result
+                      (list (car rest)
+                            (lg-json--normalize-for-serialize (cadr rest)))))
+        (setq rest (cddr rest)))
+      result))
+   ((listp value)
+    (vconcat (mapcar #'lg-json--normalize-for-serialize value)))
+   (t value)))
 
 (defconst lg-json-text-prism
   (lg-prism

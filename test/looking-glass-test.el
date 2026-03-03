@@ -3,8 +3,6 @@
 (require 'looking-glass-core-test)
 (require 'looking-glass-convert-test)
 (require 'looking-glass-json-test)
-(require 'looking-glass-yaml-test)
-(require 'looking-glass-toml-test)
 (require 'looking-glass-buffer-test)
 
 ;;; looking-glass-test.el ends here
