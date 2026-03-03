@@ -7,7 +7,7 @@ This is a grouped reference of public APIs in `looking-glass`.
 ### Isomorphism
 
 - Constructor: `lg-iso`
-- Related review support: `lg-review`, `lg-unto`, `lg-reviews`
+- Related review support: `lg-review`, `lg-unto`, `lg-reviews`, `lg-re`
 - Common conversion iso: `lg-list->vector`
 
 ### Lens
@@ -34,7 +34,8 @@ This is a grouped reference of public APIs in `looking-glass`.
 - Constructor: `lg-indexed`
 - Composition: `lg-compose-indexed`, `lg-compose-indexed2`
 - Reindexing: `lg-ireindexed`
-- Common indexed traversals: `lg-indexed-list`, `lg-ifiltered`, `lg-indices`, `lg-indexed-list-filtered`, `lg-indexed-list-indices`
+- Index bridge helpers: `lg-as-indexed`, `lg-unindexed`
+- Common indexed traversals: `lg-indexed-list`, `lg-indexed-vector`, `lg-indexed-string`, `lg-ifiltered`, `lg-indices`, `lg-indexed-list-filtered`, `lg-indexed-list-indices`
 
 ### Getter/Fold-like helpers
 
@@ -48,7 +49,7 @@ This is a grouped reference of public APIs in `looking-glass`.
 
 ### Compose
 
-- `lg-compose`, `lg-compose2`, `lg-optic`
+- `lg-compose`, `lg-compose2`, `lg<<`, `lg>>`, `lg-optic`
 
 ### Read
 
@@ -59,14 +60,22 @@ This is a grouped reference of public APIs in `looking-glass`.
 - `lg-preview-or`
 - `lg-ipreview`
 - `lg-ipreview-maybe` (alias)
+- `lg-ipreview-or`
 - `lg-has`
+- `lg-ihas`
+- `lg-iview`
+- `lg-iview-non-nil`
 
 ### Update
 
 - `lg-over`
+- `lg-map-of`
+- `lg-for-of`
 - `lg-set`
 - `lg-iover`
 - `lg-imap-of`
+- `lg-ifor-of`
+- `lg-iset`
 
 ### Review/build
 
@@ -86,11 +95,11 @@ This is a grouped reference of public APIs in `looking-glass`.
 
 ### Vectors
 
-- `lg-vector`
+- `lg-vector`, `lg-indexed-vector`
 
 ### Strings
 
-- `lg-string`
+- `lg-string`, `lg-indexed-string`, `lg-nth`
 
 ### Keyed structures
 

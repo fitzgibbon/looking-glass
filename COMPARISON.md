@@ -15,6 +15,7 @@ but adapted to Emacs Lisp conventions.
 | preview | `preview` / `(^?)` | `preview` | `lg-preview` |
 | set | `set` / `(.~)` | `set` | `lg-set` |
 | over | `over` / `(%~)` | `over` | `lg-over` |
+| composition operators | `(.)` / `(&)` / `(>>>)` (from `Control.Category`) | `<<<` / `>>>` | `lg<<` / `lg>>` |
 | list foci | `toListOf` / `(^..)` | `toListOf` | `lg-to-list-of` |
 | has | `has` | `is`/`has` style helpers | `lg-has` |
 | review | `review` / `(#)` | `review` | `lg-review` |

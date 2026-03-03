@@ -367,6 +367,14 @@ The resulting optic focuses through INNER first, then OUTER."
       (cl-reduce #'lg-compose2 optics :from-end t)
     lg-id))
 
+(defun lg<< (&rest optics)
+  "Compose OPTICS from right to left."
+  (apply #'lg-compose optics))
+
+(defun lg>> (&rest optics)
+  "Compose OPTICS from left to right."
+  (apply #'lg-compose (reverse optics)))
+
 (defun lg-compose-indexed2 (outer inner)
   "Compose indexed OUTER with indexed INNER."
   (make-lg-indexed-optic

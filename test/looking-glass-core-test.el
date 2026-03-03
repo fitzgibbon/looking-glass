@@ -34,6 +34,11 @@
     (should (equal (lg-view optic nested) 2))
     (should (equal (lg-set optic 7 nested) '((1 . 7) . 3)))))
 
+(ert-deftest lg-compose-operator-aliases ()
+  (let ((nested '((1 . 2) . 3)))
+    (should (equal (lg-view (lg<< lg-cdr lg-car) nested) 2))
+    (should (equal (lg-view (lg>> lg-car lg-cdr) nested) 2))))
+
 (ert-deftest lg-traversal-list-over-and-fold ()
   (let ((optic lg-list))
     (should (equal (lg-over optic (lambda (x) (* x 10)) '(1 2 3)) '(10 20 30)))

@@ -24,6 +24,18 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ;; => ((1 . 7) . 3)
 ```
 
+### 1b) Compose with operator-style helpers
+
+```elisp
+;; Right-to-left composition (same as `lg-compose`)
+(lg-view (lg<< lg-cdr lg-car) '((1 . 2) . 3))
+;; => 2
+
+;; Left-to-right composition (pipeline style)
+(lg-view (lg>> lg-car lg-cdr) '((1 . 2) . 3))
+;; => 2
+```
+
 ### 2) Update all list items through a traversal
 
 ```elisp
@@ -159,7 +171,7 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ## Main API groups
 
 - Core constructors: `lg-iso`, `lg-lens`, `lg-prism`, `lg-traversal`, `lg-affine`
-- Composition: `lg-compose`, `lg-compose-indexed`, `lg-optic`
+- Composition: `lg-compose`, `lg<<`, `lg>>`, `lg-compose-indexed`, `lg-optic`
 - Sum helpers: `lg-just`/`lg-nothing` (Maybe), `lg-left`/`lg-right` (Either)
 - Keyed optics: `lg-ix`, `lg-at`, `lg-plist-key`, `lg-alist-key`, `lg-hash-key`
 - Sum-type optics: `lg-just-o`, `lg-left-o`, `lg-right-o`, `lg-non-nil`
