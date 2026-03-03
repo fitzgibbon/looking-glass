@@ -10,11 +10,16 @@ but adapted to Emacs Lisp conventions.
 | lens constructor | =lens= | =lens= | =lg-lens= |
 | prism constructor | =prism= / =prism'= | =prism= / =prism'= | =lg-prism= |
 | traversal constructor | =traversal=-style combinators | =wander=-based traversal constructors | =lg-traversal= |
+| grate constructor | =grate= | =grate= | =lg-grate= |
 | affine traversal | commonly encoded via traversal/prism/indexed combinators | =Data.Lens.AffineTraversal= | =lg-affine= |
 | view | =view= / =(^.)= | =view= | =lg-view= |
 | preview | =preview= / =(^?)= | =preview= | =lg-preview= |
 | set | =set= / =(.~)= | =set= | =lg-set= |
 | over | =over= / =(%~)= | =over= | =lg-over= |
+| fold-map | =foldMapOf= | =foldMapOf= | =lg-fold-map-of= |
+| right fold | =foldrOf= | =foldrOf= | =lg-foldr-of= |
+| sum/product | =sumOf= / =productOf= | =sumOf= / =productOf= | =lg-sum-of= / =lg-product-of= |
+| minimum/maximum | =minimumOf= / =maximumOf= | =minimumOf= / =maximumOf= | =lg-minimum-of= / =lg-maximum-of= |
 | composition operators | =(.)= / =(&)= / =(>>>)= (from =Control.Category=) | =<<<= / =>>>= | =lg<<= / =lg>>= |
 | list foci | =toListOf= / =(^..)= | =toListOf= | =lg-to-list-of= |
 | has | =has= | =is=/=has= style helpers | =lg-has= |
@@ -38,6 +43,7 @@ but adapted to Emacs Lisp conventions.
 - Haskell and PureScript enforce many optic constraints in the type system.
 - Emacs Lisp cannot encode these constraints statically in the same way.
 - =looking-glass= validates shape/usage at runtime and signals errors when needed.
+- Container-polymorphic operations use generic method dispatch extension points (=lg-ix-get=/=lg-ix-set=, =lg-at-get=/=lg-at-set=, =lg-nth-get=/=lg-nth-set=).
 
 ** Data model adaptation
 
@@ -46,7 +52,7 @@ but adapted to Emacs Lisp conventions.
   - cons cells and lists
   - plists and alists
   - hash tables
-  - vectors and strings
+  - vectors, strings, and bool-vectors
 
 ** =ix= and =at=
 

@@ -127,6 +127,19 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
               0
               '(2 3 4))
 ;; => 11
+
+;; Fold-map with a monoid
+(lg-fold-map-of lg-list lg-monoid-string
+                (lambda (x) (number-to-string x))
+                '(1 2 3))
+;; => "123"
+
+;; Aggregate helpers
+(lg-sum-of lg-list '(1 2 3 4))
+;; => 10
+
+(lg-maximum-of lg-list '(3 7 5))
+;; => (lg-just . 7)
 #+end_src
 
 ** 8) Conversion optics
@@ -228,9 +241,11 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 - Sum-type optics: =lg-just-o=, =lg-left-o=, =lg-right-o=, =lg-non-nil=
 - Maybe adapters: =lg-unmaybe=
 - Viewing and updates: =lg-view=, =lg-preview=, =lg-over=, =lg-set=
-- Folds: =lg-to-list-of=, =lg-first-of=, =lg-last-of=, =lg-find-of=, =lg-any-of=, =lg-all-of=
-- Indexed folds and updates: =lg-ito-list-of=, =lg-ifirst-of=, =lg-ilast-of=, =lg-ifind-of=, =lg-iover=
+- Folds: =lg-to-list-of=, =lg-foldl-of=, =lg-foldr-of=, =lg-fold-map-of=, =lg-first-of=, =lg-last-of=, =lg-find-of=, =lg-any-of=, =lg-all-of=, =lg-count-of=, =lg-length-of=, =lg-null-of=, =lg-sum-of=, =lg-product-of=, =lg-minimum-of=, =lg-maximum-of=
+- Indexed folds and updates: =lg-ito-list-of=, =lg-ifoldl-of=, =lg-ifoldr-of=, =lg-ifold-map-of=, =lg-ifirst-of=, =lg-ilast-of=, =lg-ifind-of=, =lg-icount-of=, =lg-ilength-of=, =lg-inull-of=, =lg-isum-of=, =lg-iproduct-of=, =lg-iminimum-of=, =lg-imaximum-of=, =lg-iover=
 - Review helpers: =lg-review=, =lg-unto=, =lg-reviews=
+- Monoids: =lg-monoid-list=, =lg-monoid-string=, =lg-monoid-sum=, =lg-monoid-product=, =lg-monoid-any=, =lg-monoid-all=
+- Generic extension points: =lg-ix-get=, =lg-ix-set=, =lg-at-get=, =lg-at-set=, =lg-nth-get=, =lg-nth-set=
 
 ** Extension packages
 
@@ -238,10 +253,7 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 
 * Documentation
 
-- API reference by optic type and data structure: =API-REFERENCE.org=
 - Naming/semantics comparison vs Haskell =lens= and PureScript =profunctor-lenses=: =COMPARISON.org=
-- Changelog: =CHANGELOG.org=
-- Release process and versioning policy: =RELEASE.org=
 
 * Benchmarks
 

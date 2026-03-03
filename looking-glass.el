@@ -273,6 +273,36 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
                      (lg-const-value wrapped-value))))
      :fmap (lambda (_fn wrapped-value) wrapped-value))))
 
+(defconst lg-monoid-list
+  (make-lg-monoid :empty nil :append #'append)
+  "Monoid for list concatenation.")
+
+(defconst lg-monoid-string
+  (make-lg-monoid :empty "" :append #'concat)
+  "Monoid for string concatenation.")
+
+(defconst lg-monoid-sum
+  (make-lg-monoid :empty 0 :append #'+)
+  "Monoid for numeric summation.")
+
+(defconst lg-monoid-product
+  (make-lg-monoid :empty 1 :append #'*)
+  "Monoid for numeric multiplication.")
+
+(defconst lg-monoid-any
+  (make-lg-monoid
+   :empty nil
+   :append (lambda (left right)
+             (or left right)))
+  "Monoid for logical disjunction.")
+
+(defconst lg-monoid-all
+  (make-lg-monoid
+   :empty t
+   :append (lambda (left right)
+             (and left right)))
+  "Monoid for logical conjunction.")
+
 (defun lg--star-profunctor (applicative)
   "Return Star profunctor implementation over APPLICATIVE."
   (let ((fmap (lg-applicative-fmap applicative)))
@@ -1030,6 +1060,13 @@ FN is called as (FN index focus)."
   "Left-fold OPTIC focuses in SOURCE with FN and INITIAL."
   (cl-reduce fn (lg-to-list-of optic source) :initial-value initial))
 
+(defun lg-foldr-of (optic fn initial source)
+  "Right-fold OPTIC focuses in SOURCE with FN and INITIAL.
+FN is called as (FN focus acc)."
+  (let ((acc initial))
+    (dolist (focus (reverse (lg-to-list-of optic source)) acc)
+      (setq acc (funcall fn focus acc)))))
+
 (defun lg-first-of (optic source)
   "Return first focus of OPTIC in SOURCE as tagged maybe."
   (lg-preview optic source))
@@ -1059,6 +1096,36 @@ FN is called as (FN acc index focus)."
                (funcall fn acc (car indexed-focus) (cdr indexed-focus)))
              (lg-ito-list-of optic source)
              :initial-value initial))
+
+(defun lg-ifoldr-of (optic fn initial source)
+  "Right-fold indexed OPTIC focuses in SOURCE with FN and INITIAL.
+FN is called as (FN index focus acc)."
+  (let ((acc initial))
+    (dolist (indexed-focus (reverse (lg-ito-list-of optic source)) acc)
+      (setq acc (funcall fn (car indexed-focus) (cdr indexed-focus) acc)))))
+
+(defun lg-fold-map-of (optic monoid fn source)
+  "Map each OPTIC focus with FN and combine using MONOID in SOURCE."
+  (let* ((app (lg--const-applicative monoid))
+         (profunctor (lg--star-profunctor app))
+         (transform (lg--run-optic
+                     optic
+                     profunctor
+                     (lambda (focus)
+                       (make-lg-const :value (funcall fn focus))))))
+    (lg-const-value (funcall transform source))))
+
+(defun lg-ifold-map-of (optic monoid fn source)
+  "Indexed fold-map over OPTIC in SOURCE using MONOID.
+FN is called as (FN index focus)."
+  (let* ((app (lg--const-applicative monoid))
+         (profunctor (lg--indexed-star-profunctor app))
+         (transform (lg--run-indexed-optic
+                     optic
+                     profunctor
+                     (lambda (index focus)
+                       (make-lg-const :value (funcall fn index focus))))))
+    (lg-const-value (funcall transform source))))
 
 (defun lg-ifirst-of (optic source)
   "Return first indexed focus of OPTIC in SOURCE as tagged maybe."
@@ -1124,9 +1191,79 @@ PREDICATE is called as (PREDICATE index focus)."
   "Count focused values of OPTIC in SOURCE."
   (length (lg-to-list-of optic source)))
 
+(defun lg-length-of (optic source)
+  "Return focus count of OPTIC in SOURCE."
+  (lg-count-of optic source))
+
+(defun lg-null-of (optic source)
+  "Return non-nil when OPTIC has no focuses in SOURCE."
+  (not (lg-has optic source)))
+
 (defun lg-icount-of (optic source)
   "Count focused values of indexed OPTIC in SOURCE."
   (length (lg-ito-list-of optic source)))
+
+(defun lg-ilength-of (optic source)
+  "Return indexed focus count of OPTIC in SOURCE."
+  (lg-icount-of optic source))
+
+(defun lg-inull-of (optic source)
+  "Return non-nil when indexed OPTIC has no focuses in SOURCE."
+  (not (lg-ihas optic source)))
+
+(defun lg-sum-of (optic source)
+  "Return numeric sum of OPTIC focuses in SOURCE."
+  (lg-fold-map-of optic lg-monoid-sum #'identity source))
+
+(defun lg-product-of (optic source)
+  "Return numeric product of OPTIC focuses in SOURCE."
+  (lg-fold-map-of optic lg-monoid-product #'identity source))
+
+(defun lg-isum-of (optic source)
+  "Return numeric sum of indexed OPTIC focuses in SOURCE."
+  (lg-ifold-map-of optic lg-monoid-sum (lambda (_index focus) focus) source))
+
+(defun lg-iproduct-of (optic source)
+  "Return numeric product of indexed OPTIC focuses in SOURCE."
+  (lg-ifold-map-of optic lg-monoid-product (lambda (_index focus) focus) source))
+
+(defun lg-maximum-of (optic source)
+  "Return maximum OPTIC focus in SOURCE as tagged maybe."
+  (let ((focuses (lg-to-list-of optic source)))
+    (if focuses
+        (lg-just (cl-reduce #'max focuses))
+      lg-nothing)))
+
+(defun lg-minimum-of (optic source)
+  "Return minimum OPTIC focus in SOURCE as tagged maybe."
+  (let ((focuses (lg-to-list-of optic source)))
+    (if focuses
+        (lg-just (cl-reduce #'min focuses))
+      lg-nothing)))
+
+(defun lg-imaximum-of (optic source)
+  "Return indexed maximum OPTIC focus in SOURCE as tagged maybe.
+Result payload is (INDEX . VALUE)."
+  (let ((focuses (lg-ito-list-of optic source)))
+    (if focuses
+        (lg-just (cl-reduce (lambda (best current)
+                              (if (> (cdr current) (cdr best))
+                                  current
+                                best))
+                            focuses))
+      lg-nothing)))
+
+(defun lg-iminimum-of (optic source)
+  "Return indexed minimum OPTIC focus in SOURCE as tagged maybe.
+Result payload is (INDEX . VALUE)."
+  (let ((focuses (lg-ito-list-of optic source)))
+    (if focuses
+        (lg-just (cl-reduce (lambda (best current)
+                              (if (< (cdr current) (cdr best))
+                                  current
+                                best))
+                            focuses))
+      lg-nothing)))
 
 (defun lg-unto (builder)
   "Create a review optic from BUILDER.
