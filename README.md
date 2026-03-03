@@ -9,8 +9,6 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 
 ```elisp
 (require 'looking-glass)
-(require 'looking-glass-convert)
-(require 'looking-glass-json)
 (require 'looking-glass-buffer)
 ```
 
@@ -95,13 +93,13 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ;; => (10 12 14)
 ```
 
-### 8) Conversion optics (`looking-glass-convert`)
+### 8) Conversion optics
 
 ```elisp
-(lg-preview lg-number-string-prism "  -3.5 ")
+(lg-preview lg-number-string "  -3.5 ")
 ;; => (lg-just . -3.5)
 
-(lg-review lg-number-string-prism 15)
+(lg-review lg-number-string 15)
 ;; => "15"
 ```
 
@@ -128,16 +126,17 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 
 ```elisp
 (lg-over
- (lg-compose (lg-json-object-key 'name) lg-json-text-prism)
+ (lg-compose (lg-ix "name") lg-json-parse)
  #'upcase
  "{\"name\":\"Ada\",\"age\":10}")
 ;; => "{\"name\":\"ADA\",\"age\":10}"
 
 (lg-over
- (lg-compose (lg-json-array-index 1)
-             (lg-json-object-key 'tags)
-             lg-json-text-prism)
- #'upcase
+ (lg-compose (lg-ix "tags") lg-json-parse)
+ (lambda (tags)
+   (let ((copy (copy-sequence tags)))
+     (aset copy 1 (upcase (aref copy 1)))
+     copy))
  "{\"tags\":[\"elisp\",\"optics\"]}")
 ;; => "{\"tags\":[\"elisp\",\"OPTICS\"]}"
 ```
@@ -145,13 +144,16 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 ### 12) Traverse JSON object values and members
 
 ```elisp
-(setq doc '((name . "Ada") (age . 10)))
+(setq doc (lg-view lg-json-parse "{\"name\":\"Ada\",\"age\":10}"))
 
-(lg-to-list-of lg-json-values doc)
-;; => ("Ada" 10)
+(gethash "name" doc)
+;; => "Ada"
 
-(lg-ito-list-of lg-json-members doc)
-;; => ((name . "Ada") (age . 10))
+(gethash "age" doc)
+;; => 10
+
+(gethash "active" (lg-view lg-json-parse "{\"active\":true}"))
+;; => lg-true
 ```
 
 ## Main API groups
@@ -169,8 +171,6 @@ keyed optics (`ix`, `at`), and convenience operations for viewing, updating, and
 
 ### Extension packages
 
-- `looking-glass-convert`: conversion optics (`lg-list-vector-iso`, `lg-number-string-prism`, ...)
-- `looking-glass-json`: JSON object/array/scalar/text optics (`lg-json-object-key`, `lg-json-array-index`, `lg-json-text-prism`, ...)
 - `looking-glass-buffer`: buffer-oriented optics (`lg-buffer-point`, `lg-buffer-string`, `lg-buffer-region-string`, ...)
 
 ## Documentation

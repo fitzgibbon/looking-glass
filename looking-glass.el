@@ -12,6 +12,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'json)
 
 (define-error 'lg-no-focus "No focus found")
 (define-error 'lg-expected-non-nil "Expected non-nil focus")
@@ -84,6 +85,12 @@ Signals when EITHER is not a tagged either value."
 (defconst lg-nothing 'lg-nothing
   "Tagged Maybe value representing an absent focus.")
 
+(defconst lg-true 'lg-true
+  "Tagged boolean value representing true.")
+
+(defconst lg-false 'lg-false
+  "Tagged boolean value representing false.")
+
 (defun lg-just (value)
   "Construct a tagged Maybe value containing VALUE."
   (cons 'lg-just value))
@@ -99,6 +106,145 @@ Signals when EITHER is not a tagged either value."
 (defun lg-maybe-value (maybe)
   "Return payload for tagged MAYBE, or nil when absent."
   (if (lg-just-p maybe) (cdr maybe) nil))
+
+(defun lg-bool-p (value)
+  "Return non-nil when VALUE is a tagged lg boolean value."
+  (or (eq value lg-true)
+      (eq value lg-false)))
+
+(defun lg-bool-value (value)
+  "Convert tagged lg boolean VALUE to Elisp t/nil."
+  (cond
+   ((eq value lg-true) t)
+   ((eq value lg-false) nil)
+   (t (error "Expected lg boolean value"))))
+
+(defun lg-bool (value)
+  "Convert Elisp boolean VALUE (t/nil) to tagged lg boolean."
+  (if (booleanp value)
+      (if value lg-true lg-false)
+    (error "Expected Elisp boolean (t or nil)")))
+
+(defun lg--json-map-values-list (list-value fn)
+  "Map FN over LIST-VALUE preserving proper list shape."
+  (mapcar fn list-value))
+
+(defun lg--json-map-values-vector (vector-value fn)
+  "Map FN over VECTOR-VALUE preserving vector shape."
+  (vconcat (mapcar fn (append vector-value nil))))
+
+(defun lg--json-normalize-from-parser (value false-object)
+  "Normalize parser VALUE into looking-glass JSON domain.
+Map booleans to `lg-true'/`lg-false' and preserve nil for JSON null.
+FALSE-OBJECT is the parser representation for false values."
+  (cond
+   ((eq value t) lg-true)
+   ((equal value false-object) lg-false)
+   ((hash-table-p value)
+    (let ((copy (copy-hash-table value)))
+      (maphash (lambda (key item)
+                 (puthash key (lg--json-normalize-from-parser item false-object) copy))
+               value)
+      copy))
+   ((and (listp value) (cl-every #'consp value))
+    (mapcar (lambda (entry)
+              (cons (car entry)
+                    (lg--json-normalize-from-parser (cdr entry) false-object)))
+            value))
+   ((and (listp value)
+         (zerop (% (length value) 2))
+         (cl-loop for rest on value by #'cddr
+                  always (symbolp (car rest))))
+    (let ((rest value)
+          (result nil))
+      (while rest
+        (setq result
+              (append result
+                      (list (car rest)
+                            (lg--json-normalize-from-parser (cadr rest) false-object))))
+        (setq rest (cddr rest)))
+      result))
+   ((vectorp value)
+    (lg--json-map-values-vector
+     value
+     (lambda (item)
+       (lg--json-normalize-from-parser item false-object))))
+   ((listp value)
+    (lg--json-map-values-list
+     value
+     (lambda (item)
+       (lg--json-normalize-from-parser item false-object))))
+   (t value)))
+
+(defun lg--json-normalize-for-serializer (value false-object)
+  "Normalize VALUE for `json-serialize'.
+Map `lg-true'/`lg-false' to serializer booleans and ensure arrays are vectors.
+FALSE-OBJECT is the serializer representation for false values."
+  (cond
+   ((eq value lg-true) t)
+   ((eq value lg-false) false-object)
+   ((hash-table-p value)
+    (let ((copy (copy-hash-table value)))
+      (maphash (lambda (key item)
+                 (puthash key (lg--json-normalize-for-serializer item false-object) copy))
+               value)
+      copy))
+   ((and (listp value) (cl-every #'consp value))
+    (mapcar (lambda (entry)
+              (cons (car entry)
+                    (lg--json-normalize-for-serializer (cdr entry) false-object)))
+            value))
+   ((and (listp value)
+         (zerop (% (length value) 2))
+         (cl-loop for rest on value by #'cddr
+                  always (symbolp (car rest))))
+    (let ((rest value)
+          (result nil))
+      (while rest
+        (setq result
+              (append result
+                      (list (car rest)
+                            (lg--json-normalize-for-serializer (cadr rest) false-object))))
+        (setq rest (cddr rest)))
+      result))
+   ((vectorp value)
+    (lg--json-map-values-vector
+     value
+     (lambda (item)
+       (lg--json-normalize-for-serializer item false-object))))
+   ((listp value)
+    (vconcat
+     (mapcar (lambda (item)
+               (lg--json-normalize-for-serializer item false-object))
+             value)))
+   (t value)))
+
+(defun lg-json-parse-with (object-type array-type &optional null-object false-object)
+  "Return a prism between JSON text and Elisp values.
+OBJECT-TYPE and ARRAY-TYPE are passed to `json-parse-string'.
+NULL-OBJECT and FALSE-OBJECT are used for parse/render, defaulting to nil and `lg-false'.
+Values are normalized so booleans become `lg-true'/`lg-false'."
+  (let ((null-value (if (null null-object) nil null-object))
+        (false-value (if (null false-object) lg-false false-object)))
+    (lg-prism
+     (lambda (json-text)
+       (if (stringp json-text)
+           (condition-case nil
+               (lg-right
+                (lg--json-normalize-from-parser
+                 (json-parse-string json-text
+                                    :object-type object-type
+                                    :array-type array-type
+                                    :null-object null-value
+                                    :false-object false-value)
+                 false-value))
+             (error (lg-left json-text)))
+         (lg-left json-text)))
+     (lambda (value)
+       (json-serialize
+        (lg--json-normalize-for-serializer value false-value)
+        :null-object null-value
+        :false-object false-value)))))
 
 (defun lg--identity-applicative ()
   "Return the identity applicative."
@@ -240,6 +386,10 @@ The resulting optic focuses through INNER first, then OUTER."
             (funcall (lg-profunctor-dimap p) forward backward pab))
    :review backward))
 
+(defconst lg-unbool
+  (lg-iso #'lg-bool-value #'lg-bool)
+  "Iso between tagged lg booleans and Elisp t/nil booleans.")
+
 (defun lg-lens (getter setter)
   "Build a lens using GETTER and SETTER.
 SETTER is called as (SETTER source new-focus)."
@@ -275,6 +425,127 @@ BUILD maps b to t."
                        (funcall right pab))))
    :review build))
 
+(defconst lg-list->vector
+  (lg-iso
+   (lambda (value)
+     (if (listp value)
+         (vconcat value)
+       (error "Expected list source for lg-list->vector")))
+   (lambda (value)
+     (if (vectorp value)
+         (append value nil)
+       (error "Expected vector focus for lg-list->vector"))))
+  "Iso between list and vector.
+Forward maps list -> vector, backward maps vector -> list.")
+
+(defun lg--parse-number-string (value)
+  "Parse VALUE into a number with full-string consumption.
+Return the number on success, or nil on failure."
+  (when (stringp value)
+    (let ((parsed (ignore-errors (read-from-string value))))
+      (when parsed
+        (let ((candidate (car parsed))
+              (position (cdr parsed)))
+          (when (and (numberp candidate)
+                     (string-match-p "\\`[[:space:]]*\\'" (substring value position)))
+            candidate))))))
+
+(defconst lg-number-string
+  (lg-prism
+   (lambda (value)
+     (let ((parsed (lg--parse-number-string value)))
+       (if parsed
+           (lg-right parsed)
+         (lg-left value))))
+   (lambda (value)
+     (if (numberp value)
+         (number-to-string value)
+       (error "Expected number focus for lg-number-string"))))
+  "Prism between string and number.
+Match parses string -> number; review renders number -> string.")
+
+(defconst lg-char-string
+  (lg-prism
+   (lambda (value)
+     (if (and (stringp value)
+              (= (length value) 1)
+              (characterp (aref value 0)))
+         (lg-right (aref value 0))
+       (lg-left value)))
+   (lambda (value)
+     (if (characterp value)
+         (char-to-string value)
+       (error "Expected character focus for lg-char-string"))))
+  "Prism between string of length 1 and character code.")
+
+(defconst lg-symbol-string
+  (lg-prism
+   (lambda (value)
+     (if (stringp value)
+         (let ((symbol (intern-soft value)))
+           (if symbol
+               (lg-right symbol)
+             (lg-left value)))
+       (lg-left value)))
+   (lambda (value)
+     (if (symbolp value)
+         (symbol-name value)
+       (error "Expected symbol focus for lg-symbol-string"))))
+  "Prism between interned symbol names and strings.
+Match uses `intern-soft' and fails when string is not interned.")
+
+(defun lg--plist-even-p (plist)
+  "Return non-nil when PLIST has even length."
+  (zerop (% (length plist) 2)))
+
+(defun lg--alist->plist-maybe (alist)
+  "Return plist converted from ALIST, or nil when invalid.
+Accepted entries are cons pairs with symbol keys and unique keys."
+  (when (listp alist)
+    (let ((seen (make-hash-table :test 'eq))
+          (result nil)
+          (ok t))
+      (dolist (entry alist)
+        (if (and (consp entry)
+                 (symbolp (car entry))
+                 (not (gethash (car entry) seen)))
+            (progn
+              (puthash (car entry) t seen)
+              (setq result (append result (list (car entry) (cdr entry)))))
+          (setq ok nil)))
+      (and ok result))))
+
+(defun lg--plist->alist-checked (plist)
+  "Return alist converted from PLIST or signal on invalid data.
+Accepted keys are symbols and keys must be unique."
+  (unless (and (listp plist) (lg--plist-even-p plist))
+    (error "Expected even-length plist"))
+  (let ((seen (make-hash-table :test 'eq))
+        (rest plist)
+        (result nil))
+    (while rest
+      (let ((key (car rest))
+            (value (cadr rest)))
+        (unless (symbolp key)
+          (error "Expected symbol key in plist"))
+        (when (gethash key seen)
+          (error "Duplicate key in plist: %S" key))
+        (puthash key t seen)
+        (setq result (append result (list (cons key value)))))
+      (setq rest (cddr rest)))
+    result))
+
+(defconst lg-alist-plist
+  (lg-prism
+   (lambda (value)
+     (let ((plist (lg--alist->plist-maybe value)))
+       (if (or plist (null value))
+           (lg-right (or plist nil))
+         (lg-left value))))
+   #'lg--plist->alist-checked)
+  "Prism between constrained alist and constrained plist.
+Accepted keys are unique symbols.")
+
 (defun lg-review (optic value)
   "Construct a target value from VALUE using OPTIC review.
 Signals when OPTIC does not support review."
@@ -282,6 +553,12 @@ Signals when OPTIC does not support review."
     (if reviewer
         (funcall reviewer value)
       (error "Optic does not support review"))))
+
+(defconst lg-json-parse
+  (lg-json-parse-with 'hash-table 'array nil lg-false)
+  "Default prism between JSON text and Elisp values.
+Uses hash tables for objects, vectors for arrays, nil for null,
+and `lg-true'/`lg-false' tagged booleans.")
 
 (defun lg-traversal (wander-fn)
   "Build a traversal from WANDER-FN.
@@ -901,19 +1178,27 @@ Signals `lg-no-focus' when no focus exists."
   "Traversal over all characters in a string.")
 
 (defun lg-nth (index)
-  "Lens focusing INDEX in a list.
+  "Lens focusing INDEX in a list or vector.
 Signals when INDEX is out of range."
   (lg-lens
    (lambda (source)
-     (unless (and (>= index 0) (< index (length source)))
-       (error "Index %s out of range" index))
-     (nth index source))
+      (unless (or (listp source) (vectorp source))
+        (error "Expected list or vector source"))
+      (unless (and (>= index 0) (< index (length source)))
+        (error "Index %s out of range" index))
+      (if (vectorp source)
+          (aref source index)
+        (nth index source)))
    (lambda (source new-focus)
-     (unless (and (>= index 0) (< index (length source)))
-       (error "Index %s out of range" index))
-     (let ((result (copy-sequence source)))
-       (setf (nth index result) new-focus)
-       result))))
+      (unless (or (listp source) (vectorp source))
+        (error "Expected list or vector source"))
+      (unless (and (>= index 0) (< index (length source)))
+        (error "Index %s out of range" index))
+      (let ((result (copy-sequence source)))
+        (if (vectorp result)
+            (aset result index new-focus)
+          (setf (nth index result) new-focus))
+        result))))
 
 (defun lg-plist-key (key &optional testfn)
   "Affine traversal focusing KEY in a plist.

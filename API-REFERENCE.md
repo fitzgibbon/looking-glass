@@ -8,7 +8,7 @@ This is a grouped reference of public APIs in `looking-glass`.
 
 - Constructor: `lg-iso`
 - Related review support: `lg-review`, `lg-unto`, `lg-reviews`
-- Example built from convert package: `lg-list-vector-iso`
+- Common conversion iso: `lg-list->vector`
 
 ### Lens
 
@@ -19,7 +19,8 @@ This is a grouped reference of public APIs in `looking-glass`.
 
 - Constructor: `lg-prism`
 - Common prisms: `lg-non-nil`, `lg-just-o`, `lg-left-o`, `lg-right-o`
-- Convert prisms: `lg-number-string-prism`, `lg-char-string-prism`, `lg-symbol-string-prism`, `lg-alist-plist-prism`
+- Convert prisms: `lg-number-string`, `lg-char-string`, `lg-symbol-string`, `lg-alist-plist`
+- JSON parse/review prisms: `lg-json-parse`, `lg-json-parse-with`
 
 ### Traversal
 
@@ -102,25 +103,11 @@ This is a grouped reference of public APIs in `looking-glass`.
 
 - Tagged maybe values: `lg-just`, `lg-nothing`, `lg-just-p`, `lg-nothing-p`, `lg-maybe-value`
 - Tagged either values: `lg-left`, `lg-right`, `lg-left-p`, `lg-right-p`, `lg-either-p`, `lg-either-value`
+- Tagged booleans: `lg-true`, `lg-false`, `lg-bool-p`
+- Boolean adapters: `lg-bool-value`, `lg-bool`, `lg-unbool`
 - Optics: `lg-non-nil`, `lg-just-o`, `lg-left-o`, `lg-right-o`
 
 ## Extension packages
-
-### Conversion (`looking-glass-convert`)
-
-- `lg-list-vector-iso`
-- `lg-number-string-prism`
-- `lg-char-string-prism`
-- `lg-symbol-string-prism`
-- `lg-alist-plist-prism`
-
-### JSON (`looking-glass-json`)
-
-- Key/object: `lg-json-object-key`, `lg-json-object-key-at`
-- Arrays: `lg-json-array-index`
-- Object traversals: `lg-json-values`, `lg-json-members`
-- Scalars/prisms: `lg-json-string`, `lg-json-number`, `lg-json-bool`, `lg-json-null-prism`
-- Text parse/review: `lg-json-text-prism`, `lg-json-parse-string`, `lg-json-render-string`
 
 ### Buffer (`looking-glass-buffer`)
 

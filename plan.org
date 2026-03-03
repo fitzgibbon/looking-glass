@@ -126,13 +126,15 @@
 
 ** Later packages (same repo, separate packages)
 
-- [X] `looking-glass-json`: optics for JSON object/array/scalar data.
+- [ ] `looking-glass-json`: optics for JSON object/array/scalar data.
 - [ ] `looking-glass-yaml`: YAML node/path optics.
 - [ ] `looking-glass-toml`: TOML table/array/value optics.
 - [X] `looking-glass-buffer`: buffer/window/point/region oriented optics.
 - [ ] Shared conventions doc to keep cross-package APIs consistent.
 
 ** JSON optics package plan (`looking-glass-json`)
+
+- Note: JSON support currently lives in core as `lg-json-parse` and `lg-json-parse-with`.
 
 - Do not force JSON through plists as the single internal representation.
 - Use a JSON-native optic layer over parsed Elisp structures with configurable object mapping.
