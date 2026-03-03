@@ -64,6 +64,8 @@
   dimap
   first
   right
+  unfirst
+  unright
   closed
   wander)
 
@@ -338,7 +340,8 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
 
 (defun lg--star-profunctor (applicative)
   "Return Star profunctor implementation over APPLICATIVE."
-  (let ((fmap (lg-applicative-fmap applicative)))
+  (let ((fmap (lg-applicative-fmap applicative))
+        (pure (lg-applicative-pure applicative)))
     (make-lg-profunctor
      :dimap (lambda (before after pab)
               (lambda (value)
@@ -358,11 +361,24 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
                     (funcall fmap
                              (lambda (new-right) (lg-right new-right))
                              (funcall pab (cdr either)))
-                  (funcall (lg-applicative-pure applicative)
+                  (funcall pure
                            (lg-left (cdr either))))))
-      :wander (lambda (wander-fn pab)
-                (lambda (value)
-                  (funcall wander-fn pab value applicative))))))
+     :unfirst (lambda (pab)
+                (lambda (focus)
+                  (funcall fmap
+                           #'car
+                           (funcall pab (cons focus nil)))))
+     :unright (lambda (pab)
+                (lambda (focus)
+                  (funcall fmap
+                           (lambda (either)
+                             (if (lg-right-p either)
+                                 (cdr either)
+                               (error "Cochoice failed: expected right branch")))
+                           (funcall pab (lg-right focus)))))
+       :wander (lambda (wander-fn pab)
+                 (lambda (value)
+                   (funcall wander-fn pab value applicative))))))
 
 (defun lg--identity-star-profunctor (applicative)
   "Return Star profunctor over identity APPLICATIVE with closed support."
@@ -370,14 +386,18 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
          (dimap (lg-profunctor-dimap base))
          (first (lg-profunctor-first base))
          (right (lg-profunctor-right base))
+         (unfirst (lg-profunctor-unfirst base))
+         (unright (lg-profunctor-unright base))
          (wander (lg-profunctor-wander base)))
     (make-lg-profunctor
-     :dimap dimap
-     :first first
-     :right right
-     :wander wander
-     :closed (lambda (pab)
-               (lambda (function-source)
+      :dimap dimap
+      :first first
+      :right right
+      :unfirst unfirst
+      :unright unright
+      :wander wander
+      :closed (lambda (pab)
+                (lambda (function-source)
                  (make-lg-identity
                   :value
                   (lambda (argument)
@@ -441,7 +461,72 @@ The mapping function receives (INDEX FOCUS)."
    :dimap (lambda (_before after tagged)
             (make-lg-tagged :value (funcall after (lg-tagged-value tagged))))
    :right (lambda (tagged)
-            (make-lg-tagged :value (lg-right (lg-tagged-value tagged))))))
+            (make-lg-tagged :value (lg-right (lg-tagged-value tagged))))
+   :unfirst (lambda (tagged)
+              (let ((value (lg-tagged-value tagged)))
+                (unless (consp value)
+                  (error "Costrong failed: expected pair payload"))
+                (make-lg-tagged :value (car value))))
+   :unright (lambda (tagged)
+              (let ((value (lg-tagged-value tagged)))
+                (if (lg-right-p value)
+                    (make-lg-tagged :value (cdr value))
+                  (error "Cochoice failed: expected right payload"))))))
+
+(defun lg--function-profunctor ()
+  "Return profunctor implementation for plain functions." 
+  (make-lg-profunctor
+   :dimap (lambda (before after fn)
+            (lambda (value)
+              (funcall after (funcall fn (funcall before value)))))
+   :first (lambda (fn)
+            (lambda (pair)
+              (cons (funcall fn (car pair)) (cdr pair))))
+   :right (lambda (fn)
+            (lambda (either)
+              (if (lg-right-p either)
+                  (lg-right (funcall fn (cdr either)))
+                (lg-left (cdr either)))))
+   :unfirst (lambda (fn)
+              (lambda (focus)
+                (car (funcall fn (cons focus nil)))))
+   :unright (lambda (fn)
+              (lambda (focus)
+                (let ((result (funcall fn (lg-right focus))))
+                  (if (lg-right-p result)
+                      (cdr result)
+                    (error "Cochoice failed: expected right branch")))))))
+
+(defun lg--forget-profunctor (&optional empty)
+  "Return Forget profunctor implementation.
+When EMPTY is nil, nil is used as the empty value for left branches in Choice."
+  (let ((mempty empty))
+    (make-lg-profunctor
+     :dimap (lambda (before _after forget)
+              (make-lg-forget
+               :run (lambda (value)
+                      (funcall (lg-forget-run forget)
+                               (funcall before value)))))
+     :first (lambda (forget)
+              (make-lg-forget
+               :run (lambda (pair)
+                      (funcall (lg-forget-run forget) (car pair)))))
+     :right (lambda (forget)
+              (make-lg-forget
+               :run (lambda (either)
+                      (if (lg-right-p either)
+                          (funcall (lg-forget-run forget) (cdr either))
+                        mempty))))
+     :unfirst (lambda (forget)
+                (make-lg-forget
+                 :run (lambda (focus)
+                        (funcall (lg-forget-run forget)
+                                 (cons focus nil)))))
+     :unright (lambda (forget)
+                (make-lg-forget
+                 :run (lambda (focus)
+                        (funcall (lg-forget-run forget)
+                                 (lg-right focus))))))))
 
 (defun lg--exchange-profunctor ()
   "Return Exchange profunctor implementation."
@@ -546,15 +631,28 @@ The mapping function receives (INDEX FOCUS)."
                         (lg-left (lg-left (cdr either)))))))))
 
 (defun lg--re-profunctor (profunctor)
-  "Return Re profunctor transformer over PROFUNCTOR.
-Only dimap is provided; optics requiring stronger structure will fail."
-  (let ((dimap (lg-profunctor-dimap profunctor)))
+  "Return Re profunctor transformer over PROFUNCTOR."
+  (let ((dimap (lg-profunctor-dimap profunctor))
+        (unfirst (lg-profunctor-unfirst profunctor))
+        (unright (lg-profunctor-unright profunctor)))
     (make-lg-profunctor
      :dimap (lambda (before after rep)
               (make-lg-rep-re
                :run (lambda (pdc)
                       (funcall (lg-rep-re-run rep)
-                               (funcall dimap after before pdc))))))))
+                               (funcall dimap after before pdc)))))
+     :first (and unfirst
+                 (lambda (rep)
+                   (make-lg-rep-re
+                    :run (lambda (pbd)
+                           (funcall (lg-rep-re-run rep)
+                                    (funcall unfirst pbd))))))
+     :right (and unright
+                 (lambda (rep)
+                   (make-lg-rep-re
+                    :run (lambda (pbd)
+                           (funcall (lg-rep-re-run rep)
+                                    (funcall unright pbd)))))))))
 
 (defun lg--run-optic (optic profunctor pab)
   "Run OPTIC against PROFUNCTOR using PAB."

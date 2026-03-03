@@ -269,6 +269,33 @@ Internal representation profunctors are exposed in code comments and naming:
 ;; => ((0 . 0) . (0 . 0))
 #+end_src
 
+** 14) Reverse a long prism+lens chain with =lg-re=
+
+#+begin_src elisp
+;; Imagine a compact success envelope:
+;; (right . (:meta . ("42" . nil)))
+;; We want to focus the numeric id.
+
+(setq id-optic
+      (lg-compose
+       lg-right-o
+       lg-cdr
+       lg-car
+       lg-number-string))
+
+(setq response
+      (lg-right (cons :meta (cons "42" nil))))
+
+(lg-view id-optic response)
+;; => 42
+
+;; Reverse the optic: now it builds envelope-shaped data from an id.
+(setq id-optic-r (lg-re id-optic))
+
+(lg-view id-optic-r 123)
+;; => (right nil "123")
+#+end_src
+
 * Main API groups
 
 - Core constructors: =lg-iso=, =lg-lens=, =lg-prism=, =lg-traversal=, =lg-grate=, =lg-affine=
@@ -308,3 +335,4 @@ emacs -Q --batch -L . -L bench -l bench/looking-glass-bench.el -f lg-bench-run
 - Compose with =lg-unmaybe= when you intentionally want nil-ambiguous shorthand behavior.
 - =lg-compose= uses "outer after inner" ordering: =(lg-compose o1 o2 o3)= means run =o3= then =o2= then =o1=.
 - Lifted unindexed traversals use =lg-no-index= as the sentinel index.
+- =lg-re= supports reversals through profunctor dual machinery where available (notably =Strong/Costrong= and =Choice/Cochoice= paths).

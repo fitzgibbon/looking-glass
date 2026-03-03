@@ -57,6 +57,51 @@ Haskell/PureScript carry indexing via indexed profunctor/typeclass structure.
 - lifted non-indexed paths use =lg-no-index= sentinel
 - indexed folds/updates (=lg-iover=, =lg-ito-list-of=, =lg-ifold-map-of=) are direct indexed interpretations.
 
+* Reversal and dual classes
+
+Haskell/PureScript profunctor optics commonly model reversal with =Re= plus dual classes:
+
+- =Strong <-> Costrong=
+- =Choice <-> Cochoice=
+
+=looking-glass= now follows that shape for reversible paths by adding dual operations to profunctor interpreters:
+
+- forward: =first=, =right=
+- dual: =unfirst=, =unright=
+
+This enables broader =lg-re= support than dimap-only reversal, including lens/prism chains built from those structures.
+
+** Practical instances in this codebase
+
+- function profunctor ("->"-style): supports =first/right= and =unfirst/unright=
+- forgetful profunctor ("Forget"-style): supports =first/right= and =unfirst/unright=
+
+These are directly analogous to practical instances you see in Haskell/PureScript optics internals.
+
+** Real reversal example (long prism+lens chain)
+
+#+begin_src elisp
+(setq id-optic
+      (lg-compose
+       lg-right-o
+       lg-cdr
+       lg-car
+       lg-number-string))
+
+(lg-view id-optic (lg-right (cons :meta (cons "42" nil))))
+;; => 42
+
+(lg-view (lg-re id-optic) 123)
+;; => (right nil "123")
+#+end_src
+
+This is the user-visible effect of =Costrong/Cochoice=-style support in reversal.
+
+** What reversal still does not cover
+
+As in mainstream Haskell/PureScript practice, traversal-style =wander= paths are not generally reversible via dual machinery alone.
+So =lg-re= remains strongest for iso/lens/prism/review-style optics.
+
 * Runtime vs static guarantees
 
 Functor semantics are aligned, but enforcement differs:
