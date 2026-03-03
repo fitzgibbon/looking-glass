@@ -5,6 +5,21 @@
 It includes core optics (=iso=, =lens=, =prism=, =traversal=, =grate=), indexed variants,
 keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and folding.
 
+* Architecture
+
+The library is implemented as profunctor optics with interpreter-driven operations.
+
+- Core optic representation is function-based: an optic transforms =p a b= into =p s t=.
+- Reviews are interpreted through =Tagged= (no separate review slot on optics).
+- Reversal uses =Re= interpretation.
+- Folds/getters are interpreted via accumulation profunctors (=Const=/=Forget=-style behavior).
+- Indexed optics use an explicit indexed wrapper value (=lg-indexed=), not ad-hoc bare callback plumbing.
+- =lg-as-indexed= lifts unindexed optics with sentinel index =lg-no-index=.
+
+Internal representation profunctors are exposed in code comments and naming:
+=Exchange= (iso), =Shop= (lens), =Market= (prism), =Stall= (affine traversal),
+=Bazaar= (traversal), =Forget= (fold/getter), =Tagged= (review), =Re= (reversal).
+
 * Quickstart
 
 #+begin_src elisp
@@ -15,7 +30,7 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 ** 1) Read and update nested pair fields
 
 #+begin_src elisp
-(setq pair-optic (lg-compose lg-cdr lg-car))
+(setq pair-optic (lg-compose lg-car lg-cdr))
 
 (lg-view pair-optic '((1 . 2) . 3))
 ;; => 2
@@ -24,23 +39,20 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 ;; => ((1 . 7) . 3)
 #+end_src
 
-** 1b) Compose with operator-style helpers (including variadic)
+** 1b) Compose optics (including variadic)
 
 #+begin_src elisp
-;; Right-to-left composition (same as `lg-compose`)
-(lg-view (lg<< lg-cdr lg-car) '((1 . 2) . 3))
+;; Composition order is outer-after-inner
+(lg-view (lg-compose lg-car lg-cdr) '((1 . 2) . 3))
 ;; => 2
 
-;; Left-to-right composition (pipeline style)
-(lg-view (lg>> lg-car lg-cdr) '((1 . 2) . 3))
-;; => 2
+;; Changing order changes meaning
+(lg-view (lg-compose lg-cdr lg-car) '((1 . 2) . 3))
+;; => 3
 
-;; Both operators are variadic
+;; Composition is variadic
 (setq source '(:user (:profile [10 20 30])))
-(lg-view (lg<< (lg-nth 1) (lg-ix :profile) (lg-ix :user)) source)
-;; => 20
-
-(lg-view (lg>> (lg-ix :user) (lg-ix :profile) (lg-nth 1)) source)
+(lg-view (lg-compose (lg-ix :user) (lg-ix :profile) (lg-nth 1)) source)
 ;; => 20
 #+end_src
 
@@ -124,7 +136,7 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 (lg-set (lg-at :age) lg-nothing profile)
 ;; => (:name "Ada")
 
-(lg-view (lg-compose lg-unmaybe (lg-at :name)) profile)
+(lg-view (lg-compose (lg-at :name) lg-unmaybe) profile)
 ;; => "Ada"
 #+end_src
 
@@ -208,13 +220,13 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 
 #+begin_src elisp
 (lg-over
- (lg-compose (lg-ix "name") lg-json-parse)
+ (lg-compose lg-json-parse (lg-ix "name"))
  #'upcase
  "{\"name\":\"Ada\",\"age\":10}")
 ;; => "{\"name\":\"ADA\",\"age\":10}"
 
 (lg-over
- (lg-compose (lg-ix "tags") lg-json-parse)
+ (lg-compose lg-json-parse (lg-ix "tags"))
  (lambda (tags)
    (let ((copy (copy-sequence tags)))
      (aset copy 1 (upcase (aref copy 1)))
@@ -260,7 +272,7 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 * Main API groups
 
 - Core constructors: =lg-iso=, =lg-lens=, =lg-prism=, =lg-traversal=, =lg-grate=, =lg-affine=
-- Composition: =lg-compose=, =lg<<=, =lg>>=, =lg-compose-indexed=, =lg-optic=
+- Composition: =lg-compose=, =lg-compose-indexed=
 - Sum helpers: =lg-just=/=lg-nothing= (Maybe), =lg-left=/=lg-right= (Either)
 - Keyed optics: =lg-ix=, =lg-at=, =lg-plist-key=, =lg-alist-key=, =lg-hash-key=
 - Sum-type optics: =lg-just-o=, =lg-left-o=, =lg-right-o=, =lg-non-nil=
@@ -294,3 +306,5 @@ emacs -Q --batch -L . -L bench -l bench/looking-glass-bench.el -f lg-bench-run
 - =lg-preview= returns tagged maybe: =lg-nothing= or =(lg-just . VALUE)=.
 - =lg-at= focuses tagged maybe; setting =lg-nothing= removes and setting =(lg-just . VALUE)= inserts/updates.
 - Compose with =lg-unmaybe= when you intentionally want nil-ambiguous shorthand behavior.
+- =lg-compose= uses "outer after inner" ordering: =(lg-compose o1 o2 o3)= means run =o3= then =o2= then =o1=.
+- Lifted unindexed traversals use =lg-no-index= as the sentinel index.

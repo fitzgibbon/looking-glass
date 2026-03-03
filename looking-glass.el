@@ -32,6 +32,34 @@
 (cl-defstruct lg-const
   value)
 
+(cl-defstruct lg-forget
+  run)
+
+(cl-defstruct lg-tagged
+  value)
+
+(cl-defstruct lg-exchange
+  sa
+  bt)
+
+(cl-defstruct lg-shop
+  getter
+  setter)
+
+(cl-defstruct lg-market
+  bt
+  seta)
+
+(cl-defstruct lg-stall
+  sbt
+  seta)
+
+(cl-defstruct lg-bazaar
+  run)
+
+(cl-defstruct lg-rep-re
+  run)
+
 (cl-defstruct lg-profunctor
   dimap
   first
@@ -46,9 +74,11 @@
   wander
   reindex)
 
+(cl-defstruct lg-indexed
+  run)
+
 (cl-defstruct lg-optic
-  apply
-  review)
+  apply)
 
 (cl-defstruct lg-indexed-optic
   apply)
@@ -91,6 +121,9 @@ Signals when EITHER is not a tagged either value."
 
 (defconst lg-false 'lg-false
   "Tagged boolean value representing false.")
+
+(defconst lg-no-index 'lg-no-index
+  "Sentinel index used when lifting unindexed optics.")
 
 (defun lg-just (value)
   "Construct a tagged Maybe value containing VALUE."
@@ -356,32 +389,172 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
 The mapping function receives (INDEX FOCUS)."
   (let ((fmap (lg-applicative-fmap applicative)))
     (make-lg-indexed-profunctor
-     :dimap (lambda (before after pib)
-              (lambda (value)
-                (funcall fmap
-                         after
-                         (funcall pib nil (funcall before value)))))
-     :first (lambda (pib)
-              (lambda (pair)
-                (let ((left (car pair))
-                      (right (cdr pair)))
-                  (funcall fmap
-                           (lambda (new-left) (cons new-left right))
-                           (funcall pib nil left)))))
-     :right (lambda (pib)
-              (lambda (either)
-                (if (lg-right-p either)
-                    (funcall fmap
-                             (lambda (new-right) (lg-right new-right))
-                             (funcall pib nil (cdr either)))
-                  (funcall (lg-applicative-pure applicative)
-                           (lg-left (cdr either))))))
-     :wander (lambda (wander-fn pib)
-               (lambda (value)
-                 (funcall wander-fn pib value applicative)))
-     :reindex (lambda (index-fn pib)
-                (lambda (index focus)
-                  (funcall pib (funcall index-fn index) focus))))))
+     :dimap (lambda (before after indexed-pib)
+              (make-lg-indexed
+               :run (lambda (_index value)
+                      (funcall fmap
+                               after
+                               (funcall (lg-indexed-run indexed-pib)
+                                        lg-no-index
+                                        (funcall before value))))))
+     :first (lambda (indexed-pib)
+              (make-lg-indexed
+               :run (lambda (_index pair)
+                      (let ((left (car pair))
+                            (right (cdr pair)))
+                        (funcall fmap
+                                 (lambda (new-left) (cons new-left right))
+                                 (funcall (lg-indexed-run indexed-pib)
+                                          lg-no-index
+                                          left))))))
+     :right (lambda (indexed-pib)
+              (make-lg-indexed
+               :run (lambda (_index either)
+                      (if (lg-right-p either)
+                          (funcall fmap
+                                   (lambda (new-right) (lg-right new-right))
+                                   (funcall (lg-indexed-run indexed-pib)
+                                            lg-no-index
+                                            (cdr either)))
+                        (funcall (lg-applicative-pure applicative)
+                                 (lg-left (cdr either)))))))
+     :wander (lambda (wander-fn indexed-pib)
+               (make-lg-indexed
+                :run (lambda (_index value)
+                       (funcall wander-fn
+                                (lambda (index focus)
+                                  (funcall (lg-indexed-run indexed-pib)
+                                           index
+                                           focus))
+                                value
+                                applicative))))
+      :reindex (lambda (index-fn indexed-pib)
+                 (make-lg-indexed
+                  :run (lambda (index focus)
+                         (funcall (lg-indexed-run indexed-pib)
+                                  (funcall index-fn index)
+                                  focus)))))))
+
+(defun lg--tagged-profunctor ()
+  "Return Tagged profunctor implementation."
+  (make-lg-profunctor
+   :dimap (lambda (_before after tagged)
+            (make-lg-tagged :value (funcall after (lg-tagged-value tagged))))
+   :right (lambda (tagged)
+            (make-lg-tagged :value (lg-right (lg-tagged-value tagged))))))
+
+(defun lg--exchange-profunctor ()
+  "Return Exchange profunctor implementation."
+  (make-lg-profunctor
+   :dimap (lambda (before after exchange)
+            (make-lg-exchange
+             :sa (lambda (source)
+                   (funcall (lg-exchange-sa exchange)
+                            (funcall before source)))
+             :bt (lambda (focus)
+                   (funcall after
+                            (funcall (lg-exchange-bt exchange) focus)))))))
+
+(defun lg--shop-profunctor ()
+  "Return Shop profunctor implementation."
+  (make-lg-profunctor
+   :dimap (lambda (before after shop)
+            (make-lg-shop
+             :getter (lambda (source)
+                       (funcall (lg-shop-getter shop)
+                                (funcall before source)))
+             :setter (lambda (source focus)
+                       (funcall after
+                                (funcall (lg-shop-setter shop)
+                                         (funcall before source)
+                                         focus)))))
+   :first (lambda (shop)
+            (make-lg-shop
+             :getter (lambda (pair)
+                       (funcall (lg-shop-getter shop) (car pair)))
+             :setter (lambda (pair focus)
+                       (cons (funcall (lg-shop-setter shop)
+                                      (car pair)
+                                      focus)
+                             (cdr pair)))))
+   :right nil))
+
+(defun lg--market-profunctor ()
+  "Return Market profunctor implementation."
+  (make-lg-profunctor
+   :dimap (lambda (before after market)
+            (make-lg-market
+             :bt (lambda (focus)
+                   (funcall after
+                            (funcall (lg-market-bt market) focus)))
+             :seta (lambda (source)
+                     (let ((result (funcall (lg-market-seta market)
+                                            (funcall before source))))
+                       (if (lg-right-p result)
+                           result
+                         (lg-left (funcall after (cdr result))))))))
+   :right (lambda (market)
+            (make-lg-market
+             :bt (lambda (focus)
+                   (lg-right (funcall (lg-market-bt market) focus)))
+             :seta (lambda (either)
+                     (if (lg-right-p either)
+                         (let ((inner (funcall (lg-market-seta market) (cdr either))))
+                           (if (lg-right-p inner)
+                               inner
+                             (lg-left (lg-right (cdr inner)))))
+                       (lg-left (lg-left (cdr either)))))))))
+
+(defun lg--stall-profunctor ()
+  "Return Stall profunctor implementation."
+  (make-lg-profunctor
+   :dimap (lambda (before after stall)
+            (make-lg-stall
+             :sbt (lambda (source focus)
+                    (funcall after
+                             (funcall (lg-stall-sbt stall)
+                                      (funcall before source)
+                                      focus)))
+             :seta (lambda (source)
+                     (let ((result (funcall (lg-stall-seta stall)
+                                            (funcall before source))))
+                       (if (lg-right-p result)
+                           result
+                         (lg-left (funcall after (cdr result))))))))
+   :first (lambda (stall)
+            (make-lg-stall
+             :sbt (lambda (pair focus)
+                    (cons (funcall (lg-stall-sbt stall) (car pair) focus)
+                          (cdr pair)))
+             :seta (lambda (pair)
+                     (let ((result (funcall (lg-stall-seta stall) (car pair))))
+                       (if (lg-right-p result)
+                           result
+                         (lg-left (cons (cdr result) (cdr pair))))))))
+   :right (lambda (stall)
+            (make-lg-stall
+             :sbt (lambda (either focus)
+                    (if (lg-right-p either)
+                        (lg-right (funcall (lg-stall-sbt stall) (cdr either) focus))
+                      (lg-left (cdr either))))
+             :seta (lambda (either)
+                     (if (lg-right-p either)
+                         (let ((result (funcall (lg-stall-seta stall) (cdr either))))
+                           (if (lg-right-p result)
+                               result
+                             (lg-left (lg-right (cdr result)))))
+                        (lg-left (lg-left (cdr either)))))))))
+
+(defun lg--re-profunctor (profunctor)
+  "Return Re profunctor transformer over PROFUNCTOR.
+Only dimap is provided; optics requiring stronger structure will fail."
+  (let ((dimap (lg-profunctor-dimap profunctor)))
+    (make-lg-profunctor
+     :dimap (lambda (before after rep)
+              (make-lg-rep-re
+               :run (lambda (pdc)
+                      (funcall (lg-rep-re-run rep)
+                               (funcall dimap after before pdc))))))))
 
 (defun lg--run-optic (optic profunctor pab)
   "Run OPTIC against PROFUNCTOR using PAB."
@@ -392,12 +565,11 @@ The mapping function receives (INDEX FOCUS)."
   (funcall (lg-indexed-optic-apply optic) indexed-profunctor pib))
 
 (defconst lg-id
-  (make-lg-optic :apply (lambda (_p pab) pab)
-                 :review #'identity)
+  (make-lg-optic :apply (lambda (_p pab) pab))
   "Identity optic.")
 
 (defconst lg-indexed-id
-  (make-lg-indexed-optic :apply (lambda (_p pib) pib))
+  (make-lg-indexed-optic :apply (lambda (_p indexed-pib) indexed-pib))
   "Identity indexed optic.")
 
 (defun lg-compose2 (outer inner)
@@ -405,45 +577,45 @@ The mapping function receives (INDEX FOCUS)."
 The resulting optic focuses through INNER first, then OUTER."
   (make-lg-optic
    :apply (lambda (p pab)
-            (lg--run-optic inner p (lg--run-optic outer p pab)))
-   :review (let ((outer-review (lg-optic-review outer))
-                 (inner-review (lg-optic-review inner)))
-             (when (and outer-review inner-review)
-               (lambda (value)
-                 (funcall outer-review (funcall inner-review value)))))))
+            (lg--run-optic outer p (lg--run-optic inner p pab)))))
 
 (defun lg-compose (&rest optics)
-  "Compose OPTICS from right to left."
+  "Compose OPTICS from right to left.
+`(lg-compose o1 o2 o3)' means `o1' after `o2' after `o3'."
   (if optics
-      (cl-reduce #'lg-compose2 optics :from-end t)
+      (let ((result (car (last optics))))
+        (dolist (optic (reverse (butlast optics)) result)
+          (setq result (lg-compose2 optic result))))
     lg-id))
-
-(defun lg<< (&rest optics)
-  "Compose OPTICS from right to left."
-  (apply #'lg-compose optics))
-
-(defun lg>> (&rest optics)
-  "Compose OPTICS from left to right."
-  (apply #'lg-compose (reverse optics)))
 
 (defun lg-compose-indexed2 (outer inner)
   "Compose indexed OUTER with indexed INNER."
   (make-lg-indexed-optic
    :apply (lambda (p pib)
-            (lg--run-indexed-optic inner p (lg--run-indexed-optic outer p pib)))))
+            (lg--run-indexed-optic outer p (lg--run-indexed-optic inner p pib)))))
 
 (defun lg-compose-indexed (&rest optics)
   "Compose indexed OPTICS from right to left."
   (if optics
-      (cl-reduce #'lg-compose-indexed2 optics :from-end t)
+      (let ((result (car (last optics))))
+        (dolist (optic (reverse (butlast optics)) result)
+          (setq result (lg-compose-indexed2 optic result))))
     lg-indexed-id))
 
 (defun lg-iso (forward backward)
   "Build an isomorphism from FORWARD and BACKWARD."
   (make-lg-optic
    :apply (lambda (p pab)
-            (funcall (lg-profunctor-dimap p) forward backward pab))
-   :review backward))
+            (funcall (lg-profunctor-dimap p) forward backward pab))))
+
+;; Optic representation aliases (documentation only):
+;; - Iso via Exchange (`lg-exchange`)
+;; - Lens via Shop (`lg-shop`)
+;; - Prism via Market (`lg-market`)
+;; - AffineTraversal via Stall (`lg-stall`)
+;; - Traversal via Wander/Bazaar-style interpretation (`lg-bazaar`)
+;; - Fold/Getter via Forget (`lg-forget`)
+;; - Review via Tagged (`lg-tagged`)
 
 (defun lg-grate (builder)
   "Build a grate from BUILDER.
@@ -512,12 +684,70 @@ BUILD maps b to t."
                 (error "Prism requires profunctor right"))
               (funcall (lg-profunctor-dimap p)
                        match
-                       (lambda (either)
-                         (if (lg-right-p either)
-                             (funcall build (cdr either))
-                           (cdr either)))
-                       (funcall right pab))))
-   :review build))
+                        (lambda (either)
+                          (if (lg-right-p either)
+                              (funcall build (cdr either))
+                            (cdr either)))
+                        (funcall right pab))))))
+
+(defun lg-clone-iso (optic)
+  "Clone OPTIC as an iso when possible."
+  (let ((exchange (lg--run-optic
+                   optic
+                   (lg--exchange-profunctor)
+                   (make-lg-exchange :sa #'identity :bt #'identity))))
+    (lg-iso (lg-exchange-sa exchange)
+            (lg-exchange-bt exchange))))
+
+(defun lg-clone-lens (optic)
+  "Clone OPTIC as a lens when possible."
+  (let ((shop (lg--run-optic
+               optic
+               (lg--shop-profunctor)
+               (make-lg-shop :getter #'identity
+                             :setter (lambda (_source focus) focus)))))
+    (lg-lens (lg-shop-getter shop)
+             (lg-shop-setter shop))))
+
+(defun lg-clone-prism (optic)
+  "Clone OPTIC as a prism when possible."
+  (let ((market (lg--run-optic
+                 optic
+                 (lg--market-profunctor)
+                 (make-lg-market :bt #'identity
+                                 :seta (lambda (source)
+                                         (lg-right source))))))
+    (lg-prism (lg-market-seta market)
+              (lg-market-bt market))))
+
+(defun lg-clone-affine (optic)
+  "Clone OPTIC as an affine traversal when possible."
+  (let ((stall (lg--run-optic
+                optic
+                (lg--stall-profunctor)
+                (make-lg-stall :sbt (lambda (_source focus) focus)
+                               :seta (lambda (source)
+                                       (lg-right source))))))
+    (lg-affine
+     (lambda (source)
+       (let ((result (funcall (lg-stall-seta stall) source)))
+         (if (lg-right-p result)
+             (lg-just (cdr result))
+           lg-nothing)))
+     (lg-stall-sbt stall))))
+
+(defun lg-clone-traversal (optic)
+  "Clone OPTIC as a traversal."
+  (lg-traversal
+   (lambda (afb source applicative)
+     (let* ((profunctor (lg--star-profunctor applicative))
+            (transform (lg--run-optic optic profunctor afb)))
+       (funcall transform source)))))
+
+(defun lg-clone-review (optic)
+  "Clone OPTIC as a review when possible."
+  (lg-unto (lambda (value)
+             (lg-review optic value))))
 
 (defconst lg-list->vector
   (lg-iso
@@ -641,12 +871,14 @@ Accepted keys are symbols and keys must be unique."
 Accepted keys are unique symbols.")
 
 (defun lg-review (optic value)
-  "Construct a target value from VALUE using OPTIC review.
-Signals when OPTIC does not support review."
-  (let ((reviewer (lg-optic-review optic)))
-    (if reviewer
-        (funcall reviewer value)
-      (error "Optic does not support review"))))
+  "Construct a target value from VALUE using OPTIC as a review.
+Signals when OPTIC cannot be interpreted as a review."
+  (let* ((profunctor (lg--tagged-profunctor))
+         (result (condition-case nil
+                     (lg--run-optic optic profunctor (make-lg-tagged :value value))
+                   (error
+                    (error "Optic does not support review")))))
+    (lg-tagged-value result)))
 
 (defconst lg-json-parse
   (lg-json-parse-with 'hash-table 'array nil lg-false)
@@ -669,32 +901,32 @@ WANDER-FN is called as (WANDER-FN afb source applicative)."
 WANDER-FN is called as (WANDER-FN iafb source applicative), where
 IAFB is called as (IAFB index focus)."
   (make-lg-indexed-optic
-   :apply (lambda (p pib)
+   :apply (lambda (p indexed-pib)
             (let ((wander (lg-indexed-profunctor-wander p)))
               (unless wander
                 (error "Indexed traversal requires indexed profunctor wander"))
-              (funcall wander wander-fn pib)))))
+              (funcall wander wander-fn indexed-pib)))))
 
 (defun lg-ireindexed (index-fn optic)
   "Transform OPTIC indices with INDEX-FN."
   (make-lg-indexed-optic
-   :apply (lambda (p pib)
+   :apply (lambda (p indexed-pib)
             (let ((reindex (lg-indexed-profunctor-reindex p)))
               (unless reindex
                 (error "Indexed optic requires indexed profunctor reindex"))
-              (lg--run-indexed-optic optic p (funcall reindex index-fn pib))))))
+              (lg--run-indexed-optic optic p (funcall reindex index-fn indexed-pib))))))
 
 (defun lg-as-indexed (optic)
-  "Lift unindexed OPTIC into an indexed optic with nil indices."
+  "Lift unindexed OPTIC into an indexed optic with `lg-no-index'."
   (lg-indexed
    (lambda (iafb source applicative)
-     (let* ((profunctor (lg--star-profunctor applicative))
-            (transform (lg--run-optic
-                        optic
-                        profunctor
-                        (lambda (focus)
-                          (funcall iafb nil focus)))))
-       (funcall transform source)))))
+      (let* ((profunctor (lg--star-profunctor applicative))
+             (transform (lg--run-optic
+                         optic
+                         profunctor
+                         (lambda (focus)
+                           (funcall iafb lg-no-index focus)))))
+        (funcall transform source)))))
 
 (defun lg-unindexed (optic)
   "Drop index information from indexed OPTIC."
@@ -704,9 +936,10 @@ IAFB is called as (IAFB index focus)."
             (transform (lg--run-indexed-optic
                         optic
                         profunctor
-                        (lambda (_index focus)
-                          (funcall afb focus)))))
-       (funcall transform source)))))
+                        (make-lg-indexed
+                         :run (lambda (_index focus)
+                                (funcall afb focus))))))
+       (funcall (lg-indexed-run transform) lg-no-index source)))))
 
 (defun lg-getter (getter-fn)
   "Build a read-only getter optic from GETTER-FN.
@@ -717,8 +950,6 @@ Setter-like operations leave the source unchanged."
        (funcall fmap
                 (lambda (_new-focus) source)
                 (funcall afb (funcall getter-fn source)))))))
-
-(defalias 'lg-to #'lg-getter)
 
 (defun lg-filtered (predicate)
   "Traversal that focuses only values satisfying PREDICATE."
@@ -733,9 +964,9 @@ Setter-like operations leave the source unchanged."
 PREDICATE is called as (PREDICATE index focus)."
   (lg-indexed
    (lambda (iafb source applicative)
-     (if (funcall predicate nil source)
-         (funcall iafb nil source)
-       (funcall (lg-applicative-pure applicative) source)))))
+      (if (funcall predicate lg-no-index source)
+          (funcall iafb lg-no-index source)
+        (funcall (lg-applicative-pure applicative) source)))))
 
 (defun lg-indices (predicate)
   "Indexed traversal that focuses when index matches PREDICATE."
@@ -762,7 +993,7 @@ PREDICATE is called as (PREDICATE index focus)."
 
 (defun lg-required (optic)
   "Require non-nil focus for OPTIC by composing with `lg-non-nil'."
-  (lg-compose lg-non-nil optic))
+  (lg-compose optic lg-non-nil))
 
 (defun lg--traverse-list (applicative afb source)
   "Traverse SOURCE list with AFB using APPLICATIVE."
@@ -975,8 +1206,6 @@ SET-FN is called as (SET-FN source new-focus)."
                      (funcall afb (cdr result)))
           (funcall pure source))))))
 
-(defalias 'lg--affine-traversal #'lg-affine)
-
 (defun lg-ix (key &optional testfn)
   "Affine traversal focusing existing KEY in keyed SOURCE.
 SOURCE can be plist, alist, or hash table.
@@ -1044,10 +1273,11 @@ FN is called as (FN index focus)."
          (transform (lg--run-indexed-optic
                      optic
                      profunctor
-                     (lambda (index focus)
-                       (make-lg-identity
-                         :value (funcall fn index focus))))))
-    (lg-identity-value (funcall transform source))))
+                     (make-lg-indexed
+                      :run (lambda (index focus)
+                             (make-lg-identity
+                              :value (funcall fn index focus)))))))
+    (lg-identity-value (funcall (lg-indexed-run transform) lg-no-index source))))
 
 (defun lg-imap-of (optic fn source)
   "Indexed map over OPTIC in SOURCE using FN.
@@ -1134,9 +1364,10 @@ FN is called as (FN index focus)."
          (transform (lg--run-indexed-optic
                      optic
                      profunctor
-                     (lambda (index focus)
-                       (make-lg-const :value (funcall fn index focus))))))
-    (lg-const-value (funcall transform source))))
+                     (make-lg-indexed
+                      :run (lambda (index focus)
+                             (make-lg-const :value (funcall fn index focus)))))))
+    (lg-const-value (funcall (lg-indexed-run transform) lg-no-index source))))
 
 (defun lg-ifirst-of (optic source)
   "Return first indexed focus of OPTIC in SOURCE as tagged maybe."
@@ -1264,8 +1495,12 @@ Result payload is (INDEX . VALUE)."
   "Create a review optic from BUILDER.
 BUILDER maps focus-domain values into source-domain values."
   (make-lg-optic
-   :apply (lambda (_p pab) pab)
-   :review builder))
+   :apply (lambda (p pab)
+            (funcall (lg-profunctor-dimap p)
+                     (lambda (_source)
+                       (error "Cannot view through a pure review"))
+                     builder
+                     pab))))
 
 (defun lg-reviews (optic fn value)
   "Review VALUE through OPTIC, then apply FN to the result."
@@ -1297,9 +1532,10 @@ Each item is (INDEX . FOCUS)."
          (transform (lg--run-indexed-optic
                      optic
                      profunctor
-                     (lambda (index focus)
-                       (make-lg-const :value (list (cons index focus)))))))
-    (lg-const-value (funcall transform source))))
+                     (make-lg-indexed
+                      :run (lambda (index focus)
+                             (make-lg-const :value (list (cons index focus))))))))
+    (lg-const-value (funcall (lg-indexed-run transform) lg-no-index source))))
 
 (defun lg-ipreview (optic source)
   "Return a disambiguated indexed preview for OPTIC in SOURCE.
@@ -1317,9 +1553,6 @@ VALUE can be nil when nil is an actual focus value."
     (if focuses
         (lg-just (car focuses))
       lg-nothing)))
-
-(defalias 'lg-ipreview-maybe #'lg-ipreview)
-(defalias 'lg-preview-maybe #'lg-preview)
 
 (defun lg-ihas (optic source)
   "Return non-nil when indexed OPTIC has at least one focus in SOURCE."
@@ -1359,27 +1592,18 @@ Signals `lg-no-focus' when no focus exists."
         indexed-value
       (signal 'lg-expected-non-nil (list optic source)))))
 
-(defmacro lg-optic (&rest optics)
-  "Compose OPTICS at macro expansion time."
-  `(lg-compose ,@optics))
-
 (defun lg-re (optic)
-  "Reverse OPTIC when possible.
-For isomorphisms, this is the true inverse optic.
-For other reviewed optics, writing uses `lg-view' and may signal.
-Signals when OPTIC does not support review."
-  (let ((reviewer (lg-optic-review optic)))
-    (unless reviewer
-      (error "Optic does not support review"))
-    (let ((viewer (lambda (value)
-                    (lg-view optic value))))
-      (make-lg-optic
-       :apply (lambda (p pab)
-                (funcall (lg-profunctor-dimap p)
-                         reviewer
-                         viewer
-                         pab))
-       :review viewer))))
+  "Reverse OPTIC using Re profunctor interpretation.
+Signals when OPTIC cannot be interpreted under Re constraints."
+  (make-lg-optic
+   :apply (lambda (p pba)
+            (let* ((rep (condition-case nil
+                            (lg--run-optic optic
+                                           (lg--re-profunctor p)
+                                           (make-lg-rep-re :run #'identity))
+                          (error
+                           (error "Optic cannot be reversed under current profunctor")))))
+              (funcall (lg-rep-re-run rep) pba)))))
 
 (defconst lg-non-nil
   (lg-prism

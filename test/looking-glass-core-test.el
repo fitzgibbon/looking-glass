@@ -90,14 +90,14 @@
 
 (ert-deftest lg-compose-nested-pairs ()
   (let* ((nested '((1 . 2) . 3))
-         (optic (lg-compose lg-cdr lg-car)))
+         (optic (lg-compose lg-car lg-cdr)))
     (should (equal (lg-view optic nested) 2))
     (should (equal (lg-set optic 7 nested) '((1 . 7) . 3)))))
 
-(ert-deftest lg-compose-operator-aliases ()
+(ert-deftest lg-compose-ordering ()
   (let ((nested '((1 . 2) . 3)))
-    (should (equal (lg-view (lg<< lg-cdr lg-car) nested) 2))
-    (should (equal (lg-view (lg>> lg-car lg-cdr) nested) 2))))
+    (should (equal (lg-view (lg-compose lg-car lg-cdr) nested) 2))
+    (should-error (lg-view (lg-compose lg-cdr lg-car) nested))))
 
 (ert-deftest lg-traversal-list-over-and-fold ()
   (let ((optic lg-list))
@@ -141,11 +141,11 @@
 
 (ert-deftest lg-reverse-reviewed-optics ()
   (let* ((iso (lg-iso #'number-to-string #'string-to-number))
-         (reversed (lg-re iso)))
+          (reversed (lg-re iso)))
     (should (equal (lg-view reversed "42") 42))
     (should (equal (lg-review reversed 7) "7"))
     (should (equal (lg-over reversed (lambda (n) (+ n 1)) "41") "42"))
-    (should-error (lg-re lg-list))))
+    (should-error (lg-view (lg-re lg-list) '(1 2 3)))))
 
 (ert-deftest lg-convert-list-vector-iso ()
   (let ((optic lg-list->vector))
@@ -260,8 +260,8 @@
   (let ((optic lg-indexed-list))
     (should (equal (lg-ito-list-of optic '(10 nil 30))
                    '((0 . 10) (1) (2 . 30))))
-    (should (equal (lg-ipreview-maybe optic '(10 nil 30)) (lg-just '(0 . 10))))
-    (should (equal (lg-ipreview-maybe optic '()) lg-nothing))
+    (should (equal (lg-ipreview optic '(10 nil 30)) (lg-just '(0 . 10))))
+    (should (equal (lg-ipreview optic '()) lg-nothing))
     (should (equal (lg-iover optic (lambda (i x) (if (= i 1) 99 x)) '(10 20 30))
                    '(10 99 30)))))
 
@@ -318,18 +318,18 @@
 (ert-deftest lg-filtered-and-indexed-combinators ()
   (let* ((even (lg-filtered (lambda (x) (and (numberp x) (zerop (% x 2))))) )
          (filtered-indexed (lg-indexed-list-indices (lambda (i) (zerop (% i 2)))))
-         (i-only (lg-indices (lambda (i) (eq i nil)))))
+         (i-only (lg-indices (lambda (i) (eq i lg-no-index)))))
     (should (equal (lg-over even (lambda (x) (* x 10)) 2) 20))
     (should (equal (lg-over even (lambda (x) (* x 10)) 3) 3))
     (should (equal (lg-ito-list-of filtered-indexed '(10 11 12 13))
                    '((0 . 10) (2 . 12))))
     (should (equal (lg-iover filtered-indexed (lambda (_i x) (+ x 1)) '(10 11 12 13))
                    '(11 11 13 13)))
-    (should (equal (lg-ito-list-of i-only 99) '((nil . 99))))))
+    (should (equal (lg-ito-list-of i-only 99) '((lg-no-index . 99))))))
 
 (ert-deftest lg-non-nil-helpers-and-macros ()
   (let* ((optic (lg-required (lg-plist-key :name)))
-         (pair-optic (lg-optic lg-cdr lg-car)))
+         (pair-optic (lg-compose lg-car lg-cdr)))
     (should (equal (lg-preview-or "unknown" optic '(:name "Ada")) "Ada"))
     (should (equal (lg-preview-or "unknown" optic '(:name nil)) "unknown"))
     (should (equal (lg-over lg-cdr
@@ -393,8 +393,8 @@
 
 (ert-deftest lg-unmaybe-lossy-adapter-over-at ()
   (let* ((profile '(:name nil :age 10))
-         (age-optic (lg-compose lg-unmaybe (lg-at :age)))
-         (name-optic (lg-compose lg-unmaybe (lg-at :name))))
+         (age-optic (lg-compose (lg-at :age) lg-unmaybe))
+         (name-optic (lg-compose (lg-at :name) lg-unmaybe)))
     (should (equal (lg-view age-optic profile) 10))
     (should (equal (lg-view name-optic profile) nil))
     (should (equal (lg-set age-optic nil profile) '(:name nil)))
@@ -440,7 +440,7 @@
   (let ((plain lg-list)
         (indexed lg-indexed-list))
     (should (equal (lg-ito-list-of (lg-as-indexed plain) '(4 5))
-                   '((nil . 4) (nil . 5))))
+                   '((lg-no-index . 4) (lg-no-index . 5))))
     (should (equal (lg-over (lg-unindexed indexed) (lambda (x) (+ x 1)) '(4 5))
                    '(5 6)))))
 
@@ -552,10 +552,10 @@
 (ert-deftest lg-json-parse-default-prism-roundtrip-and-edit ()
   (let ((json "{\"name\":\"Ada\",\"tags\":[\"elisp\",\"optics\"],\"active\":true,\"disabled\":false,\"note\":null}"))
     (should (equal
-             (lg-over (lg-compose (lg-ix "name") lg-json-parse) #'upcase json)
+             (lg-over (lg-compose lg-json-parse (lg-ix "name")) #'upcase json)
              "{\"name\":\"ADA\",\"tags\":[\"elisp\",\"optics\"],\"active\":true,\"disabled\":false,\"note\":null}"))
     (should (equal
-             (lg-over (lg-compose (lg-ix "tags") lg-json-parse)
+             (lg-over (lg-compose lg-json-parse (lg-ix "tags"))
                       (lambda (tags)
                         (let ((copy (copy-sequence tags)))
                           (aset copy 1 (upcase (aref copy 1)))

@@ -1,81 +1,95 @@
-* comparison with Haskell and PureScript optics libraries
+* Functor-Centric Comparison: Haskell lens, PureScript profunctor-lenses, and looking-glass
 
-=looking-glass= is inspired by Haskell =lens= and PureScript =profunctor-lenses=,
-but adapted to Emacs Lisp conventions.
+This document explains the libraries from a *functor interpreter* point of view:
 
-* Naming correspondence
+- an optic is one polymorphic program
+- operations come from choosing a functor/applicative/profunctor interpreter
+- concrete helpers like =view=, =over=, =preview=, =review= are interpretations.
 
-| Concept | Haskell =lens= | PureScript =profunctor-lenses= | =looking-glass= |
+That model is true in Haskell, PureScript, and =looking-glass=; the biggest differences are dynamic runtime checks and Elisp data shapes.
+
+* Core idea by interpreter
+
+| Operation family | Typical interpreter idea | Haskell/PureScript name | looking-glass |
 |-
+| update | identity effect | =over= / =set= | =lg-over= / =lg-set= |
+| collect foci | constant accumulation | =toListOf=, =foldMapOf= | =lg-to-list-of=, =lg-fold-map-of= |
+| preview first match | short-circuit optional accumulation | =preview= | =lg-preview= |
+| construct | tagged output direction | =review= | =lg-review= |
+| indexed update/fold | indexed interpreter + accumulation/identity | =iover=, =ifoldMapOf= | =lg-iover=, =lg-ifold-map-of= |
+
+In =looking-glass= this is explicit in architecture:
+
+- plain optics are interpreted with star-like profunctor runners
+- folds/getters use accumulation interpreters
+- reviews use =Tagged=-style interpretation
+- reversal uses =Re=-style interpretation
+- indexed optics use an explicit indexed wrapper (=lg-indexed=).
+
+* Constructor correspondence
+
+| Concept | Haskell lens | PureScript profunctor-lenses | looking-glass |
+|-
+| iso constructor | =iso= | =iso= | =lg-iso= |
 | lens constructor | =lens= | =lens= | =lg-lens= |
 | prism constructor | =prism= / =prism'= | =prism= / =prism'= | =lg-prism= |
-| traversal constructor | =traversal=-style combinators | =wander=-based traversal constructors | =lg-traversal= |
-| grate constructor | =grate= | =grate= | =lg-grate= |
-| affine traversal | commonly encoded via traversal/prism/indexed combinators | =Data.Lens.AffineTraversal= | =lg-affine= |
-| view | =view= / =(^.)= | =view= | =lg-view= |
-| preview | =preview= / =(^?)= | =preview= | =lg-preview= |
-| set | =set= / =(.~)= | =set= | =lg-set= |
-| over | =over= / =(%~)= | =over= | =lg-over= |
-| boolean negation | =not= | =not= | =lg-not= (iso) |
-| fold-map | =foldMapOf= | =foldMapOf= | =lg-fold-map-of= |
-| right fold | =foldrOf= | =foldrOf= | =lg-foldr-of= |
-| sum/product | =sumOf= / =productOf= | =sumOf= / =productOf= | =lg-sum-of= / =lg-product-of= |
-| minimum/maximum | =minimumOf= / =maximumOf= | =minimumOf= / =maximumOf= | =lg-minimum-of= / =lg-maximum-of= |
-| composition operators | =(.)= / =(&)= / =(>>>)= (from =Control.Category=) | =<<<= / =>>>= | =lg<<= / =lg>>= |
-| list foci | =toListOf= / =(^..)= | =toListOf= | =lg-to-list-of= |
-| length of foci | =lengthOf= | =lengthOf= | =lg-length-of= |
-| has | =has= | =is=/=has= style helpers | =lg-has= |
-| review | =review= / =(#)= | =review= | =lg-review= |
-| =ix= | =ix= | =ix= | =lg-ix= |
-| =at= | =at= | =at= | =lg-at= |
+| traversal constructor | traversal/wander builders | wander-style constructors | =lg-traversal= |
+| affine traversal | dedicated affine modules/combinators | =Data.Lens.AffineTraversal= | =lg-affine= |
+| grate | =grate= | =grate= | =lg-grate= |
+| review constructor | =unto= / =review= plumbing | =unto= / =review= plumbing | =lg-unto= |
 
-* Semantics differences
+* Composition model
 
-** Missing vs present =nil=
+=looking-glass= now keeps one explicit composition API:
 
-- Haskell/PureScript usually use =Maybe= for optional focus values.
-- In Emacs Lisp, =nil= is both false and the empty list, and can be a real payload.
-- =looking-glass= defaults to tagged maybe distinction for preview-like reads:
-  - missing focus: =lg-nothing=
-  - present focus (possibly =nil=): =(lg-just . VALUE)=
-- Compose with =lg-unmaybe= only when you intentionally want nil-ambiguous behavior.
-- =lg-not= supports both boolean domains used by the library: tagged =lg-true=/=lg-false= and Elisp =t=/=nil=.
+- =lg-compose= for plain optics
+- =lg-compose-indexed= for indexed optics
 
-** Runtime checks vs static guarantees
+Ordering is explicit and functional: =(lg-compose o1 o2 o3)= means run =o3= then =o2= then =o1=.
 
-- Haskell and PureScript enforce many optic constraints in the type system.
-- Emacs Lisp cannot encode these constraints statically in the same way.
-- =looking-glass= validates shape/usage at runtime and signals errors when needed.
-- Container-polymorphic operations use generic method dispatch extension points (=lg-ix-get=/=lg-ix-set=, =lg-at-get=/=lg-at-set=, =lg-nth-get=/=lg-nth-set=).
-- Negative focus checks follow Haskell/PureScript style: use =(not (lg-has ...))= instead of a dedicated negative helper.
+* Indexed model (functor-centric)
 
-** Data model adaptation
+Haskell/PureScript carry indexing via indexed profunctor/typeclass structure.
 
-- =lens= and =profunctor-lenses= target typed ADTs, records, and standard typeclass instances.
-- =looking-glass= targets idiomatic Elisp data:
-  - cons cells and lists
-  - plists and alists
-  - hash tables
-  - vectors, strings, and bool-vectors
+=looking-glass= mirrors this with explicit runtime representation:
 
-** =ix= and =at=
+- indexed payloads run through =lg-indexed=
+- lifted non-indexed paths use =lg-no-index= sentinel
+- indexed folds/updates (=lg-iover=, =lg-ito-list-of=, =lg-ifold-map-of=) are direct indexed interpretations.
 
-- Conceptually aligned with Haskell/PureScript:
-  - =ix= focuses an existing key/index (no insertion)
-  - =at= focuses presence/value and supports insertion/removal
-- In =looking-glass=, keyed containers are dynamically dispatched (plist/alist/hash table) rather than selected via static typeclass resolution.
+* Runtime vs static guarantees
 
-* Design intent
+Functor semantics are aligned, but enforcement differs:
 
-- Keep the profunctor optic core and composition model familiar.
-- Favor explicit, discoverable =lg-= APIs over operator-heavy style.
-- Preserve practical parity for day-to-day transformations on Emacs Lisp structures.
+- Haskell/PureScript: many constraints proven statically
+- Emacs Lisp: constraints checked at runtime
 
-* Current boundary policy (=ix= vs positional optics)
+So the *meaning* of interpreter-based operations matches, but failure mode is runtime signaling in =looking-glass=.
 
-- Haskell =lens= and PureScript =profunctor-lenses= expose a polymorphic =ix= across map-like and sequence-like containers via typeclasses.
-- =looking-glass= currently keeps this boundary explicit:
-  - keyed/map-like containers use =lg-ix= and =lg-at=
-  - sequence positions use positional optics such as =lg-nth=
-- This is intentional in a dynamic language to avoid ambiguous runtime dispatch for list-shaped values (for example, plain lists vs alists).
-- Future unification is possible, but should only happen with a documented dispatch policy and compatibility notes.
+* Data-model adaptation
+
+Compared with typed ADTs/records, =looking-glass= targets Elisp-native containers:
+
+- cons cells/lists
+- plists/alists
+- hash tables
+- vectors/strings/bool-vectors
+
+This mainly affects container dispatch for =lg-ix= / =lg-at= / =lg-nth= extension points, not the interpreter model itself.
+
+* Nil and optional focus semantics
+
+In Elisp, =nil= is both false/empty-list and valid payload, so =looking-glass= uses tagged maybe results for disambiguation:
+
+- missing focus: =lg-nothing=
+- present focus: =(lg-just . VALUE)= (where =VALUE= can itself be =nil=)
+
+This keeps preview/fold semantics stable under the functor-centric interpretation model.
+
+* Practical takeaway
+
+If you already think in =Functor=/=Applicative= optics terms from Haskell or PureScript, =looking-glass= is conceptually the same game:
+
+- define optics once
+- choose interpreter to get operation behavior
+- adapt only for dynamic checks + Elisp container semantics.

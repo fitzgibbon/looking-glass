@@ -172,3 +172,95 @@
 - [ ] Decide concrete API for "missing" vs "present with nil" disambiguation.
 - [ ] Decide mutation policy (pure return-only vs opt-in destructive helpers).
 - [ ] Decide whether to include state monad-style APIs in core or extension.
+
+* Refactor plan: make core more "pure profunctor"
+
+Goal: replace the mixed representation (profunctor apply + ad-hoc `review` slot + traversal-derived helpers)
+with explicit profunctor encodings, matching PureScript/Haskell profunctor-lens architecture more closely.
+
+Constraints for this refactor:
+
+- No backward-compatibility requirement: there are no external users yet.
+- Public usage and naming may change if the resulting API is cleaner.
+- Functional scope must be preserved: support every optic kind and utility family currently supported.
+
+** Phase A: lock in target architecture
+
+- [X] Define canonical internal optic type as just:
+  - `Optic p s t a b = (p a b -> p s t)`
+  - keep indexed equivalent similarly minimal
+- [X] Treat reviews as derived optics (`Tagged` / `Re`) instead of storing `:review` on `lg-optic`.
+- [X] Decide which internal profunctor encodings we will support in v1 refactor:
+  - `Exchange` (Iso), `Shop` (Lens), `Market` (Prism), `Stall` (AffineTraversal),
+    `Bazaar` (Traversal), `Forget` (Fold/Getter), `Tagged` (Review), `Re` (reversal),
+    plus indexed wrappers.
+- [X] Document refactor invariants:
+  - preserve current optic capability coverage (iso/lens/prism/traversal/affine/grate/fold/getter/setter/review/indexed)
+  - preserve nil/missing disambiguation semantics
+  - preserve composition laws.
+
+** Phase B: add concrete profunctor representations
+
+- [X] Introduce internal structs/modules for concrete profunctors:
+  - `lg-exchange`, `lg-shop`, `lg-market`, `lg-stall`, `lg-bazaar`, `lg-forget`, `lg-tagged`, `lg-re`.
+- [X] Provide constructor/run helpers for each representation (eg `lg-run-bazaar`, extractor helpers).
+- [X] Add instances/operations required by current machinery (`dimap`, `first`, `right`, `wander`, `closed`, etc)
+  specialized per representation rather than relying only on Star+Const wrappers.
+- [X] Add law-style tests per representation (roundtrip/extractor laws where applicable).
+
+** Phase C: re-express optic aliases and constructors
+
+- [X] Define explicit aliases in docs/code comments (even if Elisp lacks type aliases), mirroring PS names:
+  - Iso/AnIso via `Exchange`
+  - Lens/ALens via `Shop`
+  - Prism/APrism via `Market`
+  - AffineTraversal/AnAffineTraversal via `Stall`
+  - Traversal/ATraversal via `Bazaar`
+  - Fold/Getter via `Forget`
+  - Review via `Tagged`.
+- [X] Refactor constructors (`lg-iso`, `lg-lens`, `lg-prism`, `lg-affine`, `lg-traversal`) to be definable through
+  these representations and clone helpers rather than bespoke closure logic.
+- [X] Add clone utilities analogous to profunctor-lenses (`clone-lens`, `clone-prism`, `clone-traversal`, etc).
+
+** Phase D: derive interpreters from profunctor choices
+
+- [X] Reimplement read/update/fold/review operators as interpreters over canonical profunctors:
+  - updates: `Star Identity`
+  - folds/getters: `Forget` (or `Star Const` wrapper with explicit `Forget` facade)
+  - reviews: `Tagged`
+  - effectful traversals: `Star F`.
+- [X] Remove direct dependence on stored `review` function field; implement `lg-review` via `Tagged`/`Re` path.
+- [X] Rework `lg-re` to use `Re` semantics first, falling back only where explicitly documented.
+
+** Phase E: indexed optics alignment
+
+- [X] Replace ad-hoc indexed profunctor path with an `Indexed` wrapper profunctor and derived combinators.
+- [X] Ensure `lg-as-indexed`/`lg-unindexed`/`lg-ireindexed` map to `Indexed` design, not bespoke nil-index plumbing.
+- [X] Add parity tests for indexed fold/update/review-style behavior.
+
+** Phase F: finalize new surface API + rollout
+
+- [X] Remove legacy internals (`lg-optic` `:review` slot assumptions, review-specific shortcuts, old indexed plumbing).
+- [X] Define the final public surface intentionally (can break old call patterns).
+- [X] Update README/docs to present the new model as the primary API:
+  - how each optic kind is represented/interpreted
+  - how to define custom optics using profunctor encodings
+  - how folds/reviews/indexed optics are derived.
+- [X] Run full test + benchmark pass and compare against pre-refactor baseline.
+
+** Risks and mitigations
+
+- [ ] Risk: performance regressions from extra wrappers.
+  - Mitigation: benchmark `lg-over`, `lg-set`, `lg-preview`, traversal hot paths each phase.
+- [ ] Risk: subtle behavior changes around nil/missing and partial optics.
+  - Mitigation: freeze behavior tests before refactor; require parity green before merging.
+- [ ] Risk: scope drift while redesigning surface APIs.
+  - Mitigation: freeze a capability checklist and keep tests mapped to each currently supported optic family.
+
+** Suggested execution order
+
+- [X] 1) Add representations + tests (Phase B)
+- [X] 2) Swap constructors/aliases to representation-backed versions (Phase C)
+- [X] 3) Swap interpreters (`view`/`over`/`fold`/`review`) to representation-driven runners (Phase D)
+- [X] 4) Migrate indexed path (Phase E)
+- [X] 5) Remove legacy internals and finalize docs/new API (Phase F)
