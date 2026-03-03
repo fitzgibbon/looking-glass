@@ -2,7 +2,7 @@
 
 =looking-glass= provides profunctor optics for Emacs Lisp.
 
-It includes core optics (=iso=, =lens=, =prism=, =traversal=), indexed variants,
+It includes core optics (=iso=, =lens=, =prism=, =traversal=, =grate=), indexed variants,
 keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and folding.
 
 * Quickstart
@@ -147,6 +147,11 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 
 (lg-set (lg-nth 1) ?Z "abcd")
 ;; => "aZcd"
+
+(let ((bits (make-bool-vector 3 nil)))
+  (aset bits 0 t)
+  (lg-set (lg-nth 1) t bits))
+;; => #&3"\7"
 #+end_src
 
 ** 10) Filter by value or index
@@ -195,9 +200,28 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 ;; => lg-true
 #+end_src
 
+** 13) Use a grate for whole-structure rewrites
+
+#+begin_src elisp
+;; A 2x2 transpose built as a grate.
+(setq transpose-2x2
+      (lg-grate
+       (lambda (build)
+         (cons (cons (funcall build (lambda (s) (car (car s))))
+                     (funcall build (lambda (s) (car (cdr s)))))
+               (cons (funcall build (lambda (s) (cdr (car s))))
+                     (funcall build (lambda (s) (cdr (cdr s)))))))))
+
+(lg-over transpose-2x2 #'identity '((1 . 2) . (3 . 4)))
+;; => ((1 . 3) . (2 . 4))
+
+(lg-set transpose-2x2 0 '((1 . 2) . (3 . 4)))
+;; => ((0 . 0) . (0 . 0))
+#+end_src
+
 * Main API groups
 
-- Core constructors: =lg-iso=, =lg-lens=, =lg-prism=, =lg-traversal=, =lg-affine=
+- Core constructors: =lg-iso=, =lg-lens=, =lg-prism=, =lg-traversal=, =lg-grate=, =lg-affine=
 - Composition: =lg-compose=, =lg<<=, =lg>>=, =lg-compose-indexed=, =lg-optic=
 - Sum helpers: =lg-just=/=lg-nothing= (Maybe), =lg-left=/=lg-right= (Either)
 - Keyed optics: =lg-ix=, =lg-at=, =lg-plist-key=, =lg-alist-key=, =lg-hash-key=

@@ -10,6 +10,10 @@ This is a grouped reference of public APIs in =looking-glass=.
 - Related review support: =lg-review=, =lg-unto=, =lg-reviews=, =lg-re=
 - Common conversion iso: =lg-list->vector=
 
+** Grate
+
+- Constructor: =lg-grate=
+
 ** Lens
 
 - Constructor: =lg-lens=
@@ -96,6 +100,10 @@ This is a grouped reference of public APIs in =looking-glass=.
 ** Vectors
 
 - =lg-vector=, =lg-indexed-vector=
+
+** Bool vectors
+
+- =lg-nth=
 
 ** Strings
 

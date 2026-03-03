@@ -146,6 +146,21 @@
     (should (equal (lg-review optic [1 2 3]) '(1 2 3)))
     (should (equal (lg-over optic (lambda (v) (vconcat v [4])) '(1 2 3)) '(1 2 3 4)))))
 
+(ert-deftest lg-grate-transpose-example ()
+  (let* ((transpose
+          (lg-grate
+           (lambda (build)
+             (cons (cons (funcall build (lambda (s) (car (car s))))
+                         (funcall build (lambda (s) (car (cdr s)))))
+                   (cons (funcall build (lambda (s) (cdr (car s))))
+                         (funcall build (lambda (s) (cdr (cdr s)))))))))
+         (source '((1 . 2) . (3 . 4))))
+    (should (equal (lg-over transpose #'identity source)
+                   '((1 . 3) . (2 . 4))))
+    (should (equal (lg-set transpose 0 source)
+                   '((0 . 0) . (0 . 0))))
+    (should-error (lg-preview transpose source))))
+
 (ert-deftest lg-convert-number-string-prism ()
   (let ((optic lg-number-string))
     (should (equal (lg-preview optic "42") (lg-just 42)))
@@ -487,6 +502,14 @@
     (should (equal (lg-view optic "abcd") ?b))
     (should (equal (lg-set optic ?Z "abcd") "aZcd"))
     (should-error (lg-set optic "Z" "abcd"))
+    (let ((bits (make-bool-vector 3 nil)))
+      (aset bits 0 t)
+      (aset bits 2 t)
+      (should (equal (lg-view optic bits) nil))
+      (let ((updated (lg-set optic t bits)))
+        (should (equal (aref updated 0) t))
+        (should (equal (aref updated 1) t))
+        (should (equal (aref updated 2) t))))
     (should-error (lg-view optic 'foo))
     (should-error (lg-view (lg-nth 9) [1 2]))))
 

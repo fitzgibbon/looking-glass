@@ -36,6 +36,7 @@
   dimap
   first
   right
+  closed
   wander)
 
 (cl-defstruct lg-indexed-profunctor
@@ -296,9 +297,29 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
                              (funcall pab (cdr either)))
                   (funcall (lg-applicative-pure applicative)
                            (lg-left (cdr either))))))
-     :wander (lambda (wander-fn pab)
-               (lambda (value)
-                 (funcall wander-fn pab value applicative))))))
+      :wander (lambda (wander-fn pab)
+                (lambda (value)
+                  (funcall wander-fn pab value applicative))))))
+
+(defun lg--identity-star-profunctor (applicative)
+  "Return Star profunctor over identity APPLICATIVE with closed support."
+  (let* ((base (lg--star-profunctor applicative))
+         (dimap (lg-profunctor-dimap base))
+         (first (lg-profunctor-first base))
+         (right (lg-profunctor-right base))
+         (wander (lg-profunctor-wander base)))
+    (make-lg-profunctor
+     :dimap dimap
+     :first first
+     :right right
+     :wander wander
+     :closed (lambda (pab)
+               (lambda (function-source)
+                 (make-lg-identity
+                  :value
+                  (lambda (argument)
+                    (lg-identity-value
+                     (funcall pab (funcall function-source argument))))))))))
 
 (defun lg--indexed-star-profunctor (applicative)
   "Return Star profunctor for indexed optics over APPLICATIVE.
@@ -393,6 +414,21 @@ The resulting optic focuses through INNER first, then OUTER."
    :apply (lambda (p pab)
             (funcall (lg-profunctor-dimap p) forward backward pab))
    :review backward))
+
+(defun lg-grate (builder)
+  "Build a grate from BUILDER.
+BUILDER is called as (BUILDER K), where K maps selectors (S -> A) to B."
+  (make-lg-optic
+   :apply (lambda (p pab)
+            (let ((closed (lg-profunctor-closed p)))
+              (unless closed
+                (error "Grate requires profunctor closed"))
+              (funcall (lg-profunctor-dimap p)
+                       (lambda (source)
+                         (lambda (selector)
+                           (funcall selector source)))
+                       builder
+                       (funcall closed pab))))))
 
 (defconst lg-unbool
   (lg-iso #'lg-bool-value #'lg-bool)
@@ -943,7 +979,7 @@ TESTFN applies to plist/alist key comparisons."
 (defun lg-over (optic fn source)
   "Apply FN over OPTIC focus in SOURCE."
   (let* ((app (lg--identity-applicative))
-         (profunctor (lg--star-profunctor app))
+         (profunctor (lg--identity-star-profunctor app))
          (transform (lg--run-optic
                      optic
                      profunctor
@@ -1308,6 +1344,11 @@ Signals when OPTIC does not support review."
     (error "Index %s out of range" index))
   (aref source index))
 
+(cl-defmethod lg-nth-get ((source bool-vector) index)
+  (unless (and (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index))
+  (aref source index))
+
 (cl-defmethod lg-nth-set ((source list) index new-focus)
   (unless (and (>= index 0) (< index (length source)))
     (error "Index %s out of range" index))
@@ -1327,6 +1368,15 @@ Signals when OPTIC does not support review."
     (error "Index %s out of range" index))
   (unless (characterp new-focus)
     (error "Expected character focus for string source"))
+  (let ((result (copy-sequence source)))
+    (aset result index new-focus)
+    result))
+
+(cl-defmethod lg-nth-set ((source bool-vector) index new-focus)
+  (unless (and (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index))
+  (unless (booleanp new-focus)
+    (error "Expected boolean focus for bool-vector source"))
   (let ((result (copy-sequence source)))
     (aset result index new-focus)
     result))
