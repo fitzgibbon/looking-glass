@@ -2,5 +2,6 @@
 
 (require 'looking-glass-core-test)
 (require 'looking-glass-buffer-test)
+(require 'looking-glass-regex-test)
 
 ;;; looking-glass-test.el ends here

@@ -323,6 +323,68 @@ Internal representation profunctors are exposed in code comments and naming:
 ;; => 9
 #+end_src
 
+** 16) Real-world-ish regex optics examples
+
+#+begin_src elisp
+;; Load regex optics extension:
+;; (require 'looking-glass-regex)
+
+;; a) Normalize IDs in logs (all matches)
+(setq log-line "request id=42 user=7 elapsed=153ms")
+(lg-over (lg-regex-all "[0-9]+")
+         (lambda (n) (format "[%s]" n))
+         log-line)
+;; => "request id=[42] user=[7] elapsed=[153]ms"
+
+;; b) Rename only a captured value (first match)
+(setq profile-line "name=Ada role=admin")
+(lg-set (lg-regex-group "name=\\([A-Za-z]+\\)" 1)
+        "Grace"
+        profile-line)
+;; => "name=Grace role=admin"
+
+;; c) Increment every `id=` value in text
+(setq payload "id=1 x id=22 y id=300")
+(lg-over (lg-regex-all-groups "id=\\([0-9]+\\)" 1)
+         (lambda (n) (number-to-string (1+ (string-to-number n))))
+         payload)
+;; => "id=2 x id=23 y id=301"
+
+;; d) Redact email-like strings in free text
+(setq note "contact: ada@example.com, ops@example.org")
+(lg-regex-replace "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]+"
+                  (lambda (_m) "<redacted>")
+                  note)
+;; => "contact: <redacted>, <redacted>"
+#+end_src
+
+** 17) Word and line traversals
+
+#+begin_src elisp
+;; Requires: (require 'looking-glass-regex)
+
+;; a) Word traversal (`\\w+` segments)
+(lg-to-list-of lg-worded "Ada Lovelace 1843")
+;; => ("Ada" "Lovelace" "1843")
+
+(lg-over lg-worded #'downcase "Ada LOVELACE")
+;; => "ada lovelace"
+
+;; b) Custom word policy (here: Capitalized words only)
+(let ((case-fold-search nil))
+  (lg-to-list-of (lg-worded-regexp "[A-Z][a-z]+") "Ada LOVELACE Byron"))
+;; => ("Ada" "Byron")
+
+;; c) Line traversal preserving original separators
+(setq mixed-lines (concat "alpha" "\r\n" "beta" "\u2028" "gamma" "\n"))
+
+(lg-to-list-of lg-lined mixed-lines)
+;; => ("alpha" "beta" "gamma" "")
+
+(lg-over lg-lined #'upcase mixed-lines)
+;; => "ALPHA\r\nBETA\u2028GAMMA\n"
+#+end_src
+
 * Main API groups
 
 - Core constructors: =lg-iso=, =lg-lens=, =lg-prism=, =lg-traversal=, =lg-grate=, =lg-affine=
@@ -342,6 +404,7 @@ Internal representation profunctors are exposed in code comments and naming:
 ** Extension packages
 
 - =looking-glass-buffer=: buffer-oriented optics (=lg-buffer-point=, =lg-buffer-string=, =lg-buffer-region-string=, ...)
+- =looking-glass-regex=: regex/string optics (=lg-regex-match=, =lg-regex-group=, =lg-regex-all=, =lg-worded=, =lg-lined=, ...)
 
 * Documentation
 

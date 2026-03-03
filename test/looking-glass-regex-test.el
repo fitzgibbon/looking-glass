@@ -1,0 +1,69 @@
+;;; looking-glass-regex-test.el --- Tests for regex optics -*- lexical-binding: t; -*-
+
+(require 'ert)
+(require 'looking-glass)
+(require 'looking-glass-regex)
+
+(ert-deftest lg-regex-match-affine-first-full-match ()
+  (let ((optic (lg-regex-match "[0-9]+")))
+    (should (equal (lg-preview optic "id=42, next=99") (lg-just "42")))
+    (should (equal (lg-view optic "id=42") "42"))
+    (should (equal (lg-set optic "777" "id=42, next=99") "id=777, next=99"))
+    (should (equal (lg-over optic (lambda (s) (concat "#" s)) "id=42") "id=#42"))
+    (should (equal (lg-set optic "x" "no digits") "no digits"))))
+
+(ert-deftest lg-regex-group-affine-first-capture ()
+  (let ((optic (lg-regex-group "name=\\([A-Za-z]+\\)" 1)))
+    (should (equal (lg-preview optic "name=Ada age=10") (lg-just "Ada")))
+    (should (equal (lg-set optic "Grace" "name=Ada age=10") "name=Grace age=10"))
+    (should (equal (lg-set optic "X" "age=10") "age=10"))))
+
+(ert-deftest lg-regex-all-traversal-over-matches ()
+  (let ((optic (lg-regex-all "[0-9]+")))
+    (should (equal (lg-to-list-of optic "a1 b22 c333") '("1" "22" "333")))
+    (should (equal (lg-over optic (lambda (s) (format "[%s]" s)) "a1 b22") "a[1] b[22]"))
+    (should (equal (lg-set optic "0" "a1 b22 c333") "a0 b0 c0"))))
+
+(ert-deftest lg-regex-all-groups-traversal-over-group ()
+  (let ((optic (lg-regex-all-groups "id=\\([0-9]+\\)" 1)))
+    (should (equal (lg-to-list-of optic "id=1 x id=22 y") '("1" "22")))
+    (should (equal (lg-over optic (lambda (s) (number-to-string (1+ (string-to-number s))))
+                             "id=1 x id=22 y")
+                   "id=2 x id=23 y"))))
+
+(ert-deftest lg-regex-replace-helpers ()
+  (should (equal (lg-regex-replace "[0-9]+" (lambda (_m) "N") "a1 b22") "aN bN"))
+  (should (equal (lg-regex-replace-group "name=\\([A-Za-z]+\\)" 1 #'upcase "name=Ada name=grace")
+                 "name=ADA name=GRACE")))
+
+(ert-deftest lg-worded-and-worded-regexp ()
+  (should (equal (lg-to-list-of lg-worded "Ada Lovelace 1843")
+                 '("Ada" "Lovelace" "1843")))
+  (should (equal (lg-over lg-worded #'downcase "Ada LOVELACE")
+                 "ada lovelace"))
+  (let ((case-fold-search nil))
+    (should (equal (lg-to-list-of (lg-worded-regexp "[A-Z][a-z]+") "Ada LOVELACE Byron")
+                   '("Ada" "Byron")))))
+
+(ert-deftest lg-lined-preserves-mixed-unicode-separators ()
+  (let ((source (concat "alpha" "\r\n" "beta" "\u2028" "gamma" "\n")))
+    (should (equal (lg-to-list-of lg-lined source)
+                   '("alpha" "beta" "gamma" "")))
+    (should (equal (lg-over lg-lined #'upcase source)
+                   (concat "ALPHA" "\r\n" "BETA" "\u2028" "GAMMA" "\n")))))
+
+(ert-deftest lg-utf8-prism-roundtrip-and-failure ()
+  (let* ((text "snowman \u2603")
+         (bytes (encode-coding-string text 'utf-8 t))
+         (invalid (unibyte-string #xff #xff)))
+    (should (stringp bytes))
+    (should-not (multibyte-string-p bytes))
+    (should (equal (lg-review lg-utf8 text) bytes))
+    (should (equal (lg-preview lg-utf8 bytes) (lg-just text)))
+    (should (equal (lg-over lg-utf8 #'upcase bytes)
+                   (encode-coding-string (upcase text) 'utf-8 t)))
+    (should (equal (lg-preview lg-utf8 invalid) lg-nothing))))
+
+(provide 'looking-glass-regex-test)
+
+;;; looking-glass-regex-test.el ends here

@@ -57,6 +57,34 @@ Haskell/PureScript carry indexing via indexed profunctor/typeclass structure.
 - lifted non-indexed paths use =lg-no-index= sentinel
 - indexed folds/updates (=lg-iover=, =lg-ito-list-of=, =lg-ifold-map-of=) are direct indexed interpretations.
 
+* String token optics (worded/lined)
+
+Haskell =lens= provides =worded= and =lined= in =Control.Lens.Fold=, implemented with split/join style logic:
+
+- =worded=: =words= / =unwords=
+- =lined=: =lines= / =intercalate "\\n"=
+
+These are practical but intentionally caveated: they type-check as traversals, but are only lawful under restricted edits.
+
+PureScript typically composes regular string functions (and optional regex libraries) with traversal combinators; there is no single canonical =worded/lined= pair in =purescript-profunctor-lenses= itself.
+
+=looking-glass= provides similar high-level behavior in the regex extension:
+
+- =lg-worded=: traversal over =\\w+= segments
+- =lg-worded-regexp=: customizable token traversal
+- =lg-lined=: traversal over line content that preserves original separators (including =\r\n=, =\n=, =\r=, =\v=, =\f=, =U+0085=, =U+2028=, =U+2029=)
+
+Example:
+
+#+begin_src elisp
+(lg-over lg-worded #'downcase "Ada LOVELACE")
+;; => "ada lovelace"
+
+(setq mixed-lines (concat "alpha" "\r\n" "beta" "\u2028" "gamma" "\n"))
+(lg-over lg-lined #'upcase mixed-lines)
+;; => "ALPHA\r\nBETA\u2028GAMMA\n"
+#+end_src
+
 * Reversal and dual classes
 
 Haskell/PureScript profunctor optics commonly model reversal with =Re= plus dual classes:
