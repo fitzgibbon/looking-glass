@@ -88,11 +88,16 @@ These are directly analogous to practical instances you see in Haskell/PureScrip
        lg-car
        lg-number-string))
 
-(lg-view id-optic (lg-right (cons :meta (cons "42" nil))))
+(setq response '(right nil "42"))
+
+(lg-view id-optic response)
 ;; => 42
 
 (lg-view (lg-re id-optic) 123)
 ;; => (right nil "123")
+
+(equal (lg-view (lg-re id-optic) 42) response)
+;; => t
 #+end_src
 
 This is the user-visible effect of =Costrong/Cochoice=-style support in reversal.

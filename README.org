@@ -272,9 +272,9 @@ Internal representation profunctors are exposed in code comments and naming:
 ** 14) Reverse a long prism+lens chain with =lg-re=
 
 #+begin_src elisp
-;; Imagine a compact success envelope:
-;; (right . (:meta . ("42" . nil)))
-;; We want to focus the numeric id.
+;; A long chain with mixed prism/lens pieces.
+;; This shape uses the canonical lens-default context so reverse construction
+;; can reproduce the full original structure exactly.
 
 (setq id-optic
       (lg-compose
@@ -284,7 +284,7 @@ Internal representation profunctors are exposed in code comments and naming:
        lg-number-string))
 
 (setq response
-      (lg-right (cons :meta (cons "42" nil))))
+      '(right nil "42"))
 
 (lg-view id-optic response)
 ;; => 42
@@ -294,6 +294,33 @@ Internal representation profunctors are exposed in code comments and naming:
 
 (lg-view id-optic-r 123)
 ;; => (right nil "123")
+
+(equal (lg-view id-optic-r 42) response)
+;; => t
+#+end_src
+
+** 15) Reversible parsed-JSON optic
+
+#+begin_src elisp
+;; Parse JSON, then parse the inner JSON string as a number.
+;; This chain is reversible in both directions.
+
+(setq json-number-optic
+      (lg-compose lg-json-parse lg-number-string))
+
+(lg-view json-number-optic "\"42\"")
+;; => 42
+
+(lg-review json-number-optic 123)
+;; => "\"123\""
+
+(setq json-number-optic-r (lg-re json-number-optic))
+
+(lg-view json-number-optic-r 123)
+;; => "\"123\""
+
+(lg-review json-number-optic-r "\"9\"")
+;; => 9
 #+end_src
 
 * Main API groups
