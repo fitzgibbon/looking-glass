@@ -464,6 +464,26 @@ BUILDER is called as (BUILDER K), where K maps selectors (S -> A) to B."
   (lg-iso #'lg-bool-value #'lg-bool)
   "Iso between tagged lg booleans and Elisp t/nil booleans.")
 
+(cl-defgeneric lg-not-value (value)
+  "Return boolean negation of VALUE for supported boolean domains.
+Supports tagged lg booleans (`lg-true'/`lg-false') and Elisp booleans (t/nil).")
+
+(cl-defmethod lg-not-value ((value (eql lg-true)))
+  lg-false)
+
+(cl-defmethod lg-not-value ((value (eql lg-false)))
+  lg-true)
+
+(cl-defmethod lg-not-value ((value (eql t)))
+  nil)
+
+(cl-defmethod lg-not-value ((value (eql nil)))
+  t)
+
+(defconst lg-not
+  (lg-iso #'lg-not-value #'lg-not-value)
+  "Generic negation iso for lg booleans and Elisp booleans.")
+
 (defun lg-lens (getter setter)
   "Build a lens using GETTER and SETTER.
 SETTER is called as (SETTER source new-focus)."
@@ -881,9 +901,6 @@ MAYBE must be `lg-nothing' or `(lg-just . VALUE)'.")
                           source)))
     (if cell (lg-just (cdr cell)) lg-nothing)))
 
-(cl-defmethod lg--list-ix-get ((kind null) source _key &optional _testfn)
-  (error "Unsupported list map-like source shape: %S" source))
-
 (cl-defmethod lg--list-ix-set ((kind (eql plist)) source key value &optional testfn)
   (let ((rest source)
         (result nil)
@@ -910,9 +927,6 @@ MAYBE must be `lg-nothing' or `(lg-just . VALUE)'.")
                     (cons (car entry) value))
                 entry))
             source)))
-
-(cl-defmethod lg--list-ix-set ((kind null) source _key _value &optional _testfn)
-  (error "Unsupported list map-like source shape: %S" source))
 
 (cl-defmethod lg--list-at-set ((kind (eql plist)) source key maybe &optional testfn)
   (let ((test (or testfn #'eq)))
@@ -944,9 +958,6 @@ MAYBE must be `lg-nothing' or `(lg-just . VALUE)'.")
           (if (and (not removed) (funcall test (car entry) key))
               (setq removed t)
             (push entry result)))))))
-
-(cl-defmethod lg--list-at-set ((kind null) source _key _maybe &optional _testfn)
-  (error "Unsupported list map-like source shape: %S" source))
 
 (defun lg-affine (preview-fn set-fn)
   "Build an affine traversal from PREVIEW-FN and SET-FN.
@@ -1187,29 +1198,13 @@ PREDICATE is called as (PREDICATE index focus)."
               (funcall predicate (car indexed-focus) (cdr indexed-focus)))
             (lg-ito-list-of optic source)))
 
-(defun lg-count-of (optic source)
-  "Count focused values of OPTIC in SOURCE."
-  (length (lg-to-list-of optic source)))
-
 (defun lg-length-of (optic source)
   "Return focus count of OPTIC in SOURCE."
-  (lg-count-of optic source))
-
-(defun lg-null-of (optic source)
-  "Return non-nil when OPTIC has no focuses in SOURCE."
-  (not (lg-has optic source)))
-
-(defun lg-icount-of (optic source)
-  "Count focused values of indexed OPTIC in SOURCE."
-  (length (lg-ito-list-of optic source)))
+  (length (lg-to-list-of optic source)))
 
 (defun lg-ilength-of (optic source)
   "Return indexed focus count of OPTIC in SOURCE."
-  (lg-icount-of optic source))
-
-(defun lg-inull-of (optic source)
-  "Return non-nil when indexed OPTIC has no focuses in SOURCE."
-  (not (lg-ihas optic source)))
+  (length (lg-ito-list-of optic source)))
 
 (defun lg-sum-of (optic source)
   "Return numeric sum of OPTIC focuses in SOURCE."

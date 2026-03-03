@@ -16,12 +16,14 @@ but adapted to Emacs Lisp conventions.
 | preview | =preview= / =(^?)= | =preview= | =lg-preview= |
 | set | =set= / =(.~)= | =set= | =lg-set= |
 | over | =over= / =(%~)= | =over= | =lg-over= |
+| boolean negation | =not= | =not= | =lg-not= (iso) |
 | fold-map | =foldMapOf= | =foldMapOf= | =lg-fold-map-of= |
 | right fold | =foldrOf= | =foldrOf= | =lg-foldr-of= |
 | sum/product | =sumOf= / =productOf= | =sumOf= / =productOf= | =lg-sum-of= / =lg-product-of= |
 | minimum/maximum | =minimumOf= / =maximumOf= | =minimumOf= / =maximumOf= | =lg-minimum-of= / =lg-maximum-of= |
 | composition operators | =(.)= / =(&)= / =(>>>)= (from =Control.Category=) | =<<<= / =>>>= | =lg<<= / =lg>>= |
 | list foci | =toListOf= / =(^..)= | =toListOf= | =lg-to-list-of= |
+| length of foci | =lengthOf= | =lengthOf= | =lg-length-of= |
 | has | =has= | =is=/=has= style helpers | =lg-has= |
 | review | =review= / =(#)= | =review= | =lg-review= |
 | =ix= | =ix= | =ix= | =lg-ix= |
@@ -37,6 +39,7 @@ but adapted to Emacs Lisp conventions.
   - missing focus: =lg-nothing=
   - present focus (possibly =nil=): =(lg-just . VALUE)=
 - Compose with =lg-unmaybe= only when you intentionally want nil-ambiguous behavior.
+- =lg-not= supports both boolean domains used by the library: tagged =lg-true=/=lg-false= and Elisp =t=/=nil=.
 
 ** Runtime checks vs static guarantees
 
@@ -44,6 +47,7 @@ but adapted to Emacs Lisp conventions.
 - Emacs Lisp cannot encode these constraints statically in the same way.
 - =looking-glass= validates shape/usage at runtime and signals errors when needed.
 - Container-polymorphic operations use generic method dispatch extension points (=lg-ix-get=/=lg-ix-set=, =lg-at-get=/=lg-at-set=, =lg-nth-get=/=lg-nth-set=).
+- Negative focus checks follow Haskell/PureScript style: use =(not (lg-has ...))= instead of a dedicated negative helper.
 
 ** Data model adaptation
 

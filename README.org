@@ -63,6 +63,19 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 ;; => 42
 #+end_src
 
+** 3b) Negate booleans with a generic iso
+
+#+begin_src elisp
+(lg-view lg-not t)
+;; => nil
+
+(lg-view lg-not lg-true)
+;; => lg-false
+
+(lg-over lg-not #'identity lg-false)
+;; => lg-true
+#+end_src
+
 ** 4) Distinguish missing focus from present =nil=
 
 #+begin_src elisp
@@ -73,6 +86,18 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 
 (lg-preview (lg-ix :missing) user)
 ;; => lg-nothing
+#+end_src
+
+** 4b) Negative has checks use plain =not=
+
+#+begin_src elisp
+(setq profile '(:name "Ada" :age 10))
+
+(lg-has (lg-ix :name) profile)
+;; => t
+
+(not (lg-has (lg-ix :missing) profile))
+;; => t
 #+end_src
 
 ** 5) Use =ix= for update-only-when-present
@@ -239,10 +264,11 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 - Sum helpers: =lg-just=/=lg-nothing= (Maybe), =lg-left=/=lg-right= (Either)
 - Keyed optics: =lg-ix=, =lg-at=, =lg-plist-key=, =lg-alist-key=, =lg-hash-key=
 - Sum-type optics: =lg-just-o=, =lg-left-o=, =lg-right-o=, =lg-non-nil=
+- Boolean adapters: =lg-unbool=, =lg-not=
 - Maybe adapters: =lg-unmaybe=
 - Viewing and updates: =lg-view=, =lg-preview=, =lg-over=, =lg-set=
-- Folds: =lg-to-list-of=, =lg-foldl-of=, =lg-foldr-of=, =lg-fold-map-of=, =lg-first-of=, =lg-last-of=, =lg-find-of=, =lg-any-of=, =lg-all-of=, =lg-count-of=, =lg-length-of=, =lg-null-of=, =lg-sum-of=, =lg-product-of=, =lg-minimum-of=, =lg-maximum-of=
-- Indexed folds and updates: =lg-ito-list-of=, =lg-ifoldl-of=, =lg-ifoldr-of=, =lg-ifold-map-of=, =lg-ifirst-of=, =lg-ilast-of=, =lg-ifind-of=, =lg-icount-of=, =lg-ilength-of=, =lg-inull-of=, =lg-isum-of=, =lg-iproduct-of=, =lg-iminimum-of=, =lg-imaximum-of=, =lg-iover=
+- Folds: =lg-to-list-of=, =lg-foldl-of=, =lg-foldr-of=, =lg-fold-map-of=, =lg-first-of=, =lg-last-of=, =lg-find-of=, =lg-any-of=, =lg-all-of=, =lg-length-of=, =lg-sum-of=, =lg-product-of=, =lg-minimum-of=, =lg-maximum-of=
+- Indexed folds and updates: =lg-ito-list-of=, =lg-ifoldl-of=, =lg-ifoldr-of=, =lg-ifold-map-of=, =lg-ifirst-of=, =lg-ilast-of=, =lg-ifind-of=, =lg-ilength-of=, =lg-isum-of=, =lg-iproduct-of=, =lg-iminimum-of=, =lg-imaximum-of=, =lg-iover=
 - Review helpers: =lg-review=, =lg-unto=, =lg-reviews=
 - Monoids: =lg-monoid-list=, =lg-monoid-string=, =lg-monoid-sum=, =lg-monoid-product=, =lg-monoid-any=, =lg-monoid-all=
 - Generic extension points: =lg-ix-get=, =lg-ix-set=, =lg-at-get=, =lg-at-set=, =lg-nth-get=, =lg-nth-set=
