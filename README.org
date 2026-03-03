@@ -345,8 +345,9 @@ Internal representation profunctors are exposed in code comments and naming:
 
 ;; c) Increment every `id=` value in text
 (setq payload "id=1 x id=22 y id=300")
-(lg-over (lg-regex-all-groups "id=\\([0-9]+\\)" 1)
-         (lambda (n) (number-to-string (1+ (string-to-number n))))
+(lg-over (lg-compose (lg-regex-all-groups "id=\\([0-9]+\\)" 1)
+                     lg-number-string)
+         #'1+
          payload)
 ;; => "id=2 x id=23 y id=301"
 
