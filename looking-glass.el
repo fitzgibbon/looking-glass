@@ -877,10 +877,9 @@ Use with `lg-preview-maybe' to disambiguate missing vs present nil."
 
 (defconst lg-unmaybe
   (lg-lens
-   (lambda (maybe)
-     (lg-maybe-value maybe))
+   #'lg-maybe-value
    (lambda (_maybe value)
-     (if value (lg-just value) lg-nothing)))
+      (if (null value) lg-nothing (lg-just value))))
   "Lossy maybe adapter lens.
 Reading maps `lg-nothing' to nil and `(lg-just . VALUE)' to VALUE.
 Writing maps nil to `lg-nothing' and non-nil values to `(lg-just . VALUE)'.")
