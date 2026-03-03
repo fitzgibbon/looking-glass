@@ -680,6 +680,16 @@ The resulting optic focuses through INNER first, then OUTER."
           (setq result (lg-compose2 optic result))))
     lg-id))
 
+(defun lg<< (&rest optics)
+  "Compose OPTICS from right to left.
+This is syntactic sugar for `lg-compose'."
+  (apply #'lg-compose optics))
+
+(defun lg>> (&rest optics)
+  "Compose OPTICS from left to right.
+`(lg>> a b c)' is equivalent to `(lg-compose c b a)'."
+  (apply #'lg-compose (reverse optics)))
+
 (defun lg-compose-indexed2 (outer inner)
   "Compose indexed OUTER with indexed INNER."
   (make-lg-indexed-optic
