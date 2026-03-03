@@ -22,11 +22,71 @@
     (dotimes (_ length (apply #'string (nreverse result)))
       (push (+ ?a (random 26)) result))))
 
+(cl-defstruct lg-test-seq
+  items)
+
+(cl-defmethod lg-nth-get ((source lg-test-seq) index)
+  (let ((items (lg-test-seq-items source)))
+    (unless (and (>= index 0) (< index (length items)))
+      (error "Index %s out of range" index))
+    (aref items index)))
+
+(cl-defmethod lg-nth-set ((source lg-test-seq) index new-focus)
+  (let ((items (copy-sequence (lg-test-seq-items source))))
+    (unless (and (>= index 0) (< index (length items)))
+      (error "Index %s out of range" index))
+    (aset items index new-focus)
+    (make-lg-test-seq :items items)))
+
+(cl-defstruct lg-test-dict
+  alist)
+
+(cl-defmethod lg-ix-get ((source lg-test-dict) key &optional _testfn)
+  (let ((cell (assq key (lg-test-dict-alist source))))
+    (if cell
+        (lg-just (cdr cell))
+      lg-nothing)))
+
+(cl-defmethod lg-ix-set ((source lg-test-dict) key value &optional _testfn)
+  (let ((updated nil)
+        (result nil))
+    (dolist (entry (lg-test-dict-alist source) (make-lg-test-dict :alist (nreverse result)))
+      (if (and (not updated) (eq (car entry) key))
+          (progn
+            (setq updated t)
+            (push (cons key value) result))
+        (push entry result)))))
+
+(cl-defmethod lg-at-set ((source lg-test-dict) key maybe &optional _testfn)
+  (unless (or (lg-nothing-p maybe) (lg-just-p maybe))
+    (error "Expected tagged maybe value"))
+  (let ((removed (cl-remove-if (lambda (entry)
+                                 (eq (car entry) key))
+                               (lg-test-dict-alist source))))
+    (if (lg-just-p maybe)
+        (make-lg-test-dict :alist (append removed (list (cons key (cdr maybe)))))
+      (make-lg-test-dict :alist removed))))
+
 (ert-deftest lg-lens-view-set-over ()
   (let ((optic lg-car))
     (should (equal (lg-view optic '(1 . 2)) 1))
     (should (equal (lg-set optic 9 '(1 . 2)) '(9 . 2)))
     (should (equal (lg-over optic (lambda (x) (+ x 3)) '(1 . 2)) '(4 . 2)))))
+
+(ert-deftest lg-generic-dispatch-extension-points ()
+  (let* ((seq (make-lg-test-seq :items [1 2 3]))
+         (dict (make-lg-test-dict :alist '((:name . "Ada") (:age . 10)))))
+    (should (equal (lg-view (lg-nth 1) seq) 2))
+    (should (equal (lg-test-seq-items (lg-set (lg-nth 1) 9 seq)) [1 9 3]))
+
+    (should (equal (lg-preview (lg-ix :name) dict) (lg-just "Ada")))
+    (should (equal (lg-preview (lg-ix :missing) dict) lg-nothing))
+    (should (equal (lg-test-dict-alist (lg-set (lg-ix :age) 11 dict))
+                   '((:name . "Ada") (:age . 11))))
+    (should (equal (lg-test-dict-alist (lg-set (lg-at :city) (lg-just "London") dict))
+                   '((:name . "Ada") (:age . 10) (:city . "London"))))
+    (should (equal (lg-test-dict-alist (lg-set (lg-at :age) lg-nothing dict))
+                   '((:name . "Ada"))))))
 
 (ert-deftest lg-compose-nested-pairs ()
   (let* ((nested '((1 . 2) . 3))

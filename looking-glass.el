@@ -808,71 +808,113 @@ IAFB is called as (IAFB index focus)."
   (and (listp value)
        (cl-every #'consp value)))
 
-(defun lg--keyed-kind (source)
-  "Classify SOURCE as one supported keyed container kind."
+(defun lg--list-keyed-kind (source)
+  "Classify list SOURCE as plist/alist keyed container kind."
   (cond
-   ((hash-table-p source) 'hash-table)
    ((lg--alist-p source) 'alist)
-   ((and (listp source) (zerop (% (length source) 2))) 'plist)
+   ((zerop (% (length source) 2)) 'plist)
    (t nil)))
 
-(defun lg--keyed-present-and-value (source key &optional testfn)
-  "Return tagged maybe for KEY in SOURCE.
-SOURCE can be plist, alist, or hash table."
-  (pcase (lg--keyed-kind source)
-    ('plist (lg--plist-present-and-value source key (or testfn #'eq)))
-    ('alist (lg--alist-present-and-value source key (or testfn #'equal)))
-    ('hash-table
-     (let* ((missing (make-symbol "lg-absent"))
-            (value (gethash key source missing)))
-        (if (eq value missing)
-            lg-nothing
-          (lg-just value))))
-    (_ (error "Unsupported keyed source type: %S" source))))
+(cl-defgeneric lg-ix-get (source key &optional testfn)
+  "Return tagged maybe for existing KEY in SOURCE.
+SOURCE extension point for `lg-ix' keyed reads.")
 
-(defun lg--keyed-set-existing (source key value &optional testfn)
-  "Set existing KEY to VALUE in SOURCE, preserving missing keys."
-  (pcase (lg--keyed-kind source)
-    ('plist
-     (if (lg-just-p (lg--plist-present-and-value source key (or testfn #'eq)))
-         (lg--plist-update-first source key value (or testfn #'eq))
-       source))
-    ('alist
-     (if (lg-just-p (lg--alist-present-and-value source key (or testfn #'equal)))
-         (lg--alist-update-first source key value (or testfn #'equal))
-       source))
-    ('hash-table
-     (let* ((missing (make-symbol "lg-absent"))
-            (current (gethash key source missing)))
-       (if (eq current missing)
-           source
-         (let ((copy (copy-hash-table source)))
-           (puthash key value copy)
-           copy))))
-    (_ (error "Unsupported keyed source type: %S" source))))
+(cl-defgeneric lg-ix-set (source key value &optional testfn)
+  "Set existing KEY to VALUE in SOURCE, preserving missing keys.
+SOURCE extension point for `lg-ix' updates.")
 
-(defun lg--keyed-set-maybe (source key maybe &optional testfn)
+(cl-defgeneric lg-at-get (source key &optional testfn)
+  "Return tagged maybe presence/value for KEY in SOURCE.
+SOURCE extension point for `lg-at' reads.")
+
+(cl-defgeneric lg-at-set (source key maybe &optional testfn)
   "Set presence state for KEY in SOURCE.
-When MAYBE is `lg-nothing', remove KEY if present.
-When MAYBE is `(lg-just . VALUE)', insert or update KEY with VALUE."
+SOURCE extension point for `lg-at' updates.
+MAYBE must be `lg-nothing' or `(lg-just . VALUE)'.")
+
+(cl-defgeneric lg--list-keyed-present-and-value (kind source key &optional testfn)
+  "List-backed keyed read dispatch by KIND.")
+
+(cl-defgeneric lg--list-keyed-set-existing (kind source key value &optional testfn)
+  "List-backed keyed update dispatch by KIND.")
+
+(cl-defgeneric lg--list-keyed-set-maybe (kind source key maybe &optional testfn)
+  "List-backed keyed maybe update dispatch by KIND.")
+
+(cl-defmethod lg-ix-get ((source hash-table) key &optional _testfn)
+  (let* ((missing (make-symbol "lg-absent"))
+         (value (gethash key source missing)))
+    (if (eq value missing)
+        lg-nothing
+      (lg-just value))))
+
+(cl-defmethod lg-ix-get ((source list) key &optional testfn)
+  (lg--list-keyed-present-and-value (lg--list-keyed-kind source) source key testfn))
+
+(cl-defmethod lg-at-get (source key &optional testfn)
+  (lg-ix-get source key testfn))
+
+(cl-defmethod lg-ix-set ((source hash-table) key value &optional _testfn)
+  (let* ((missing (make-symbol "lg-absent"))
+         (current (gethash key source missing)))
+    (if (eq current missing)
+        source
+      (let ((copy (copy-hash-table source)))
+        (puthash key value copy)
+        copy))))
+
+(cl-defmethod lg-ix-set ((source list) key value &optional testfn)
+  (lg--list-keyed-set-existing (lg--list-keyed-kind source) source key value testfn))
+
+(cl-defmethod lg-at-set (source _key maybe &optional _testfn)
   (unless (or (lg-nothing-p maybe) (lg-just-p maybe))
     (error "Expected tagged maybe value"))
-  (pcase (lg--keyed-kind source)
-    ('plist
-     (if (lg-just-p maybe)
-         (lg--plist-set-first-or-add source key (cdr maybe) (or testfn #'eq))
-       (lg--plist-remove-first source key (or testfn #'eq))))
-    ('alist
-     (if (lg-just-p maybe)
-         (lg--alist-set-first-or-add source key (cdr maybe) (or testfn #'equal))
-       (lg--alist-remove-first source key (or testfn #'equal))))
-    ('hash-table
-      (let ((copy (copy-hash-table source)))
-       (if (lg-just-p maybe)
-           (puthash key (cdr maybe) copy)
-         (remhash key copy))
-       copy))
-    (_ (error "Unsupported keyed source type: %S" source))))
+  (cl-call-next-method))
+
+(cl-defmethod lg-at-set ((source hash-table) key maybe &optional _testfn)
+  (let ((copy (copy-hash-table source)))
+    (if (lg-just-p maybe)
+        (puthash key (cdr maybe) copy)
+      (remhash key copy))
+    copy))
+
+(cl-defmethod lg-at-set ((source list) key maybe &optional testfn)
+  (lg--list-keyed-set-maybe (lg--list-keyed-kind source) source key maybe testfn))
+
+(cl-defmethod lg--list-keyed-present-and-value ((kind (eql plist)) source key &optional testfn)
+  (lg--plist-present-and-value source key (or testfn #'eq)))
+
+(cl-defmethod lg--list-keyed-present-and-value ((kind (eql alist)) source key &optional testfn)
+  (lg--alist-present-and-value source key (or testfn #'equal)))
+
+(cl-defmethod lg--list-keyed-present-and-value ((kind null) source _key &optional _testfn)
+  (error "Unsupported keyed list source shape: %S" source))
+
+(cl-defmethod lg--list-keyed-set-existing ((kind (eql plist)) source key value &optional testfn)
+  (if (lg-just-p (lg--plist-present-and-value source key (or testfn #'eq)))
+      (lg--plist-update-first source key value (or testfn #'eq))
+    source))
+
+(cl-defmethod lg--list-keyed-set-existing ((kind (eql alist)) source key value &optional testfn)
+  (if (lg-just-p (lg--alist-present-and-value source key (or testfn #'equal)))
+      (lg--alist-update-first source key value (or testfn #'equal))
+    source))
+
+(cl-defmethod lg--list-keyed-set-existing ((kind null) source _key _value &optional _testfn)
+  (error "Unsupported keyed list source shape: %S" source))
+
+(cl-defmethod lg--list-keyed-set-maybe ((kind (eql plist)) source key maybe &optional testfn)
+  (if (lg-just-p maybe)
+      (lg--plist-set-first-or-add source key (cdr maybe) (or testfn #'eq))
+    (lg--plist-remove-first source key (or testfn #'eq))))
+
+(cl-defmethod lg--list-keyed-set-maybe ((kind (eql alist)) source key maybe &optional testfn)
+  (if (lg-just-p maybe)
+      (lg--alist-set-first-or-add source key (cdr maybe) (or testfn #'equal))
+    (lg--alist-remove-first source key (or testfn #'equal))))
+
+(cl-defmethod lg--list-keyed-set-maybe ((kind null) source _key _maybe &optional _testfn)
+  (error "Unsupported keyed list source shape: %S" source))
 
 (defun lg-affine (preview-fn set-fn)
   "Build an affine traversal from PREVIEW-FN and SET-FN.
@@ -898,9 +940,9 @@ SOURCE can be plist, alist, or hash table.
 TESTFN applies to plist/alist key comparisons."
   (lg-affine
    (lambda (source)
-     (lg--keyed-present-and-value source key testfn))
-    (lambda (source new-focus)
-      (lg--keyed-set-existing source key new-focus testfn))))
+     (lg-ix-get source key testfn))
+     (lambda (source new-focus)
+       (lg-ix-set source key new-focus testfn))))
 
 (defun lg-ix-maybe (key &optional testfn)
   "Affine traversal equivalent to `lg-ix'.
@@ -925,9 +967,9 @@ SOURCE can be plist, alist, or hash table.
 TESTFN applies to plist/alist key comparisons."
   (lg-lens
    (lambda (source)
-     (lg--keyed-present-and-value source key testfn))
+     (lg-at-get source key testfn))
    (lambda (source maybe)
-     (lg--keyed-set-maybe source key maybe testfn))))
+     (lg-at-set source key maybe testfn))))
 
 (defun lg-at-maybe (key &optional testfn)
   "Alias for `lg-at'."
@@ -1292,31 +1334,59 @@ Signals when OPTIC does not support review."
                  (string-to-list source))))))
   "Indexed traversal over all characters in a string.")
 
+(cl-defgeneric lg-nth-get (source index)
+  "Read INDEX from SOURCE for `lg-nth'.")
+
+(cl-defgeneric lg-nth-set (source index new-focus)
+  "Set INDEX in SOURCE to NEW-FOCUS for `lg-nth'.")
+
+(cl-defmethod lg-nth-get ((source list) index)
+  (unless (and (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index))
+  (nth index source))
+
+(cl-defmethod lg-nth-get ((source vector) index)
+  (unless (and (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index))
+  (aref source index))
+
+(cl-defmethod lg-nth-get ((source string) index)
+  (unless (and (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index))
+  (aref source index))
+
+(cl-defmethod lg-nth-set ((source list) index new-focus)
+  (unless (and (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index))
+  (let ((result (copy-sequence source)))
+    (setf (nth index result) new-focus)
+    result))
+
+(cl-defmethod lg-nth-set ((source vector) index new-focus)
+  (unless (and (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index))
+  (let ((result (copy-sequence source)))
+    (aset result index new-focus)
+    result))
+
+(cl-defmethod lg-nth-set ((source string) index new-focus)
+  (unless (and (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index))
+  (unless (characterp new-focus)
+    (error "Expected character focus for string source"))
+  (let ((result (copy-sequence source)))
+    (aset result index new-focus)
+    result))
+
 (defun lg-nth (index)
   "Lens focusing INDEX in a list, vector, or string.
 For strings, focus values are character codes.
 Signals when INDEX is out of range."
   (lg-lens
    (lambda (source)
-       (unless (or (listp source) (vectorp source) (stringp source))
-         (error "Expected list, vector, or string source"))
-       (unless (and (>= index 0) (< index (length source)))
-         (error "Index %s out of range" index))
-       (if (or (vectorp source) (stringp source))
-           (aref source index)
-         (nth index source)))
+       (lg-nth-get source index))
    (lambda (source new-focus)
-       (unless (or (listp source) (vectorp source) (stringp source))
-         (error "Expected list, vector, or string source"))
-       (unless (and (>= index 0) (< index (length source)))
-         (error "Index %s out of range" index))
-       (when (and (stringp source) (not (characterp new-focus)))
-         (error "Expected character focus for string source"))
-       (let ((result (copy-sequence source)))
-         (if (or (vectorp result) (stringp result))
-             (aset result index new-focus)
-           (setf (nth index result) new-focus))
-         result))))
+       (lg-nth-set source index new-focus))))
 
 (defun lg-plist-key (key &optional testfn)
   "Affine traversal focusing KEY in a plist.

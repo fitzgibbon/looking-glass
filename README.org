@@ -113,6 +113,22 @@ keyed optics (=ix=, =at=), and convenience operations for viewing, updating, and
 ;; => (10 12 14)
 #+end_src
 
+** 7b) Fold focused values
+
+#+begin_src elisp
+;; Sum all focused values
+(lg-foldl-of lg-list #'+ 0 '(1 2 3 4))
+;; => 10
+
+;; Indexed fold: weighted sum by index
+(lg-ifoldl-of lg-indexed-list
+              (lambda (acc i x)
+                (+ acc (* i x)))
+              0
+              '(2 3 4))
+;; => 11
+#+end_src
+
 ** 8) Conversion optics
 
 #+begin_src elisp
