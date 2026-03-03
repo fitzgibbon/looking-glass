@@ -29,6 +29,9 @@
 (cl-defstruct lg-identity
   value)
 
+(cl-defstruct lg-state
+  run)
+
 (cl-defstruct lg-const
   value)
 
@@ -301,6 +304,158 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
                      (lg-const-value wrapped-fn)
                      (lg-const-value wrapped-value))))
      :fmap (lambda (_fn wrapped-value) wrapped-value))))
+
+(defun lg-state-pure (value)
+  "Return a state computation that yields VALUE without changing state."
+  (make-lg-state :run (lambda (state)
+                        (cons value state))))
+
+(defun lg-state-fmap (fn st)
+  "Map FN over ST result value."
+  (make-lg-state
+   :run (lambda (state)
+          (let* ((result (funcall (lg-state-run st) state))
+                 (value (car result))
+                 (next-state (cdr result)))
+            (cons (funcall fn value) next-state)))))
+
+(defun lg-state-ap (sf st)
+  "Apply stateful function SF to stateful argument ST."
+  (lg-state-bind sf
+                 (lambda (fn)
+                   (lg-state-bind st
+                                  (lambda (value)
+                                    (lg-state-pure (funcall fn value)))))))
+
+(defun lg-state-bind (st fn)
+  "Sequence ST with FN, threading state.
+FN is called with ST result and must return another state computation."
+  (make-lg-state
+   :run (lambda (state)
+          (let* ((result (funcall (lg-state-run st) state))
+                 (value (car result))
+                 (next-state (cdr result))
+                 (next-stateful (funcall fn value)))
+            (funcall (lg-state-run next-stateful) next-state)))))
+
+(defun lg-run-state (st initial-state)
+  "Run state computation ST from INITIAL-STATE.
+Returns (RESULT . FINAL-STATE)."
+  (funcall (lg-state-run st) initial-state))
+
+(defun lg-eval-state (st initial-state)
+  "Run ST from INITIAL-STATE and return result value only."
+  (car (lg-run-state st initial-state)))
+
+(defun lg-exec-state (st initial-state)
+  "Run ST from INITIAL-STATE and return final state only."
+  (cdr (lg-run-state st initial-state)))
+
+(defun lg-state-get ()
+  "Return a state computation that yields current state."
+  (make-lg-state :run (lambda (state)
+                        (cons state state))))
+
+(defun lg-state-put (new-state)
+  "Return a state computation that replaces state with NEW-STATE."
+  (make-lg-state :run (lambda (_state)
+                        (cons nil new-state))))
+
+(defun lg-state-modify (fn)
+  "Return a state computation that transforms state with FN."
+  (make-lg-state :run (lambda (state)
+                        (cons nil (funcall fn state)))))
+
+(defun lg-state-view-of (optic)
+  "Return a state computation that views OPTIC from current state."
+  (make-lg-state :run (lambda (state)
+                        (cons (lg-view optic state) state))))
+
+(defun lg-state-preview-of (optic)
+  "Return a state computation that previews OPTIC from current state."
+  (make-lg-state :run (lambda (state)
+                        (cons (lg-preview optic state) state))))
+
+(defun lg-state-over-of (optic fn)
+  "Return a state computation that maps FN over OPTIC focus in state."
+  (make-lg-state :run (lambda (state)
+                        (cons nil (lg-over optic fn state)))))
+
+(defun lg-state-set-of (optic value)
+  "Return a state computation that sets OPTIC focus to VALUE."
+  (lg-state-over-of optic (lambda (_focus) value)))
+
+(cl-defgeneric lg-ref-read (ref)
+  "Return immutable state snapshot for mutable REF.")
+
+(cl-defgeneric lg-ref-write (ref state)
+  "Write STATE snapshot into mutable REF and return REF.")
+
+(defun lg-run-state-on-ref! (st ref)
+  "Run state computation ST against mutable REF.
+Uses `lg-ref-read' and `lg-ref-write'. Returns ST result value."
+  (let* ((initial-state (lg-ref-read ref))
+         (result (lg-run-state st initial-state))
+         (value (car result))
+         (final-state (cdr result)))
+    (lg-ref-write ref final-state)
+    value))
+
+(defun lg-view! (optic ref)
+  "View OPTIC from mutable REF state without mutating REF."
+  (lg-view optic (lg-ref-read ref)))
+
+(defun lg-preview! (optic ref)
+  "Preview OPTIC from mutable REF state without mutating REF."
+  (lg-preview optic (lg-ref-read ref)))
+
+(defun lg-over! (optic fn ref)
+  "Mutate REF by applying FN over OPTIC focus in REF state.
+Returns REF."
+  (lg-run-state-on-ref! (lg-state-over-of optic fn) ref)
+  ref)
+
+(defun lg-set! (optic value ref)
+  "Mutate REF by setting OPTIC focus to VALUE in REF state.
+Returns REF."
+  (lg-run-state-on-ref! (lg-state-set-of optic value) ref)
+  ref)
+
+(defun lg-ref-over-edit! (optic fn ref)
+  "Apply reversible OPTIC update to REF and return undo thunk.
+The returned thunk restores the exact pre-edit REF snapshot."
+  (let* ((before (lg-ref-read ref))
+         (after (lg-over optic fn before)))
+    (lg-ref-write ref after)
+    (lambda ()
+      (lg-ref-write ref before)
+      ref)))
+
+(defun lg-ref-set-edit! (optic value ref)
+  "Set OPTIC to VALUE on REF and return undo thunk."
+  (lg-ref-over-edit! optic (lambda (_focus) value) ref))
+
+(defun lg-ref-lens (state-lens)
+  "Lift STATE-LENS to a mutable lens over refs.
+STATE-LENS must be a lens over snapshots returned by `lg-ref-read'."
+  (lg-lens
+   (lambda (ref)
+     (lg-view state-lens (lg-ref-read ref)))
+   (lambda (ref new-focus)
+     (let ((state (lg-ref-read ref)))
+       (lg-ref-write ref (lg-set state-lens new-focus state))
+       ref))))
+
+(defun lg-ref-affine (state-affine)
+  "Lift STATE-AFFINE to a mutable affine traversal over refs.
+STATE-AFFINE must be an affine optic over snapshots from `lg-ref-read'."
+  (lg-affine
+   (lambda (ref)
+     (lg-preview state-affine (lg-ref-read ref)))
+   (lambda (ref new-focus)
+     (let ((state (lg-ref-read ref)))
+       (lg-ref-write ref (lg-set state-affine new-focus state))
+       ref))))
 
 (defconst lg-monoid-list
   (make-lg-monoid :empty nil :append #'append)
