@@ -326,13 +326,6 @@
     (should (equal (lg-set (lg-at :age) lg-nothing plist)
                    '(:name nil)))
 
-    (should (equal (lg-view (lg-at-maybe :name) plist) (lg-just nil)))
-    (should (equal (lg-view (lg-at-maybe :missing) plist) lg-nothing))
-    (should (equal (lg-set (lg-at-maybe :missing) (lg-just 99) plist)
-                   '(:name nil :age 10 :missing 99)))
-    (should (equal (lg-set (lg-at-maybe :age) lg-nothing plist)
-                   '(:name nil)))
-
     (should (equal (lg-preview (lg-ix "name" #'string=) alist) (lg-just nil)))
     (should (equal (lg-set (lg-at "missing" #'string=) (lg-just 7) alist)
                    '(("name") ("age" . 10) ("missing" . 7))))
@@ -451,12 +444,9 @@
                          (puthash "other" 1 table)
                          table))))
              (ix (lg-ix key testfn))
-             (at (lg-at key testfn))
-             (at-maybe (lg-at-maybe key testfn)))
+             (at (lg-at key testfn)))
         (should (equal (lg-has ix source) present))
         (should (equal (lg-view at source)
-                       (if present (lg-just value) lg-nothing)))
-        (should (equal (lg-view at-maybe source)
                        (if present (lg-just value) lg-nothing)))
 
         (let ((ix-updated (lg-set ix replacement source)))

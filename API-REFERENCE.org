@@ -103,10 +103,10 @@ This is a grouped reference of public APIs in =looking-glass=.
 
 ** Keyed structures
 
-- Generic keyed: =lg-ix=, =lg-ix-maybe=, =lg-at=, =lg-at-maybe= (alias)
+- Generic keyed: =lg-ix=, =lg-at=
 - Plist helpers: =lg-plist-key=
 - Alist helpers: =lg-alist-key=
-- Hash helpers: =lg-hash-key=, =lg-hash-key-at=, =lg-hash-key-at-maybe=
+- Hash helpers: =lg-hash-key=, =lg-hash-key-at=
 
 ** Maybe/Either-style values
 

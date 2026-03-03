@@ -718,98 +718,13 @@ IAFB is called as (IAFB index focus)."
               source
               :initial-value (funcall pure nil)))))
 
-(defun lg--plist-present-and-value (plist key testfn)
-  "Return tagged maybe for KEY in PLIST using TESTFN."
-  (let ((rest plist)
-        found
-        value)
-    (while rest
-      (let ((candidate (car rest))
-            (candidate-value (cadr rest)))
-        (when (and (not found) (funcall testfn candidate key))
-          (setq found t
-                value candidate-value))
-        (setq rest (cddr rest))))
-    (if found
-        (lg-just value)
-      lg-nothing)))
-
-(defun lg--plist-update-first (plist key value testfn)
-  "Return PLIST with first KEY set to VALUE using TESTFN."
-  (let ((rest plist)
-        (result nil)
-        (updated nil))
-    (while rest
-      (let ((candidate (car rest))
-            (candidate-value (cadr rest)))
-        (if (and (not updated) (funcall testfn candidate key))
-            (progn
-              (setq updated t)
-              (setq result (append result (list candidate value))))
-          (setq result (append result (list candidate candidate-value)))))
-      (setq rest (cddr rest)))
-    result))
-
-(defun lg--alist-present-and-value (alist key testfn)
-  "Return tagged maybe for KEY in ALIST using TESTFN."
-  (let ((cell (cl-find-if (lambda (entry)
-                            (funcall testfn (car entry) key))
-                          alist)))
-    (if cell (lg-just (cdr cell)) lg-nothing)))
-
-(defun lg--alist-update-first (alist key value testfn)
-  "Return ALIST with first KEY set to VALUE using TESTFN."
-  (let ((updated nil))
-    (mapcar (lambda (entry)
-              (if (and (not updated) (funcall testfn (car entry) key))
-                  (progn
-                    (setq updated t)
-                    (cons (car entry) value))
-                entry))
-            alist)))
-
-(defun lg--plist-remove-first (plist key testfn)
-  "Return PLIST with first KEY removed using TESTFN."
-  (let ((rest plist)
-        (result nil)
-        (removed nil))
-    (while rest
-      (let ((candidate (car rest))
-            (candidate-value (cadr rest)))
-        (if (and (not removed) (funcall testfn candidate key))
-            (setq removed t)
-          (setq result (append result (list candidate candidate-value)))))
-      (setq rest (cddr rest)))
-    result))
-
-(defun lg--plist-set-first-or-add (plist key value testfn)
-  "Return PLIST with first KEY set to VALUE, adding when missing."
-  (if (lg-just-p (lg--plist-present-and-value plist key testfn))
-      (lg--plist-update-first plist key value testfn)
-    (append plist (list key value))))
-
-(defun lg--alist-remove-first (alist key testfn)
-  "Return ALIST with first KEY removed using TESTFN."
-  (let ((result nil)
-        (removed nil))
-    (dolist (entry alist (nreverse result))
-      (if (and (not removed) (funcall testfn (car entry) key))
-          (setq removed t)
-        (push entry result)))))
-
-(defun lg--alist-set-first-or-add (alist key value testfn)
-  "Return ALIST with first KEY set to VALUE, adding when missing."
-  (if (lg-just-p (lg--alist-present-and-value alist key testfn))
-      (lg--alist-update-first alist key value testfn)
-    (append alist (list (cons key value)))))
-
 (defun lg--alist-p (value)
   "Return non-nil when VALUE is an alist."
   (and (listp value)
        (cl-every #'consp value)))
 
-(defun lg--list-keyed-kind (source)
-  "Classify list SOURCE as plist/alist keyed container kind."
+(defun lg--list-ix-kind (source)
+  "Classify list SOURCE as plist/alist map-like container kind."
   (cond
    ((lg--alist-p source) 'alist)
    ((zerop (% (length source) 2)) 'plist)
@@ -832,14 +747,14 @@ SOURCE extension point for `lg-at' reads.")
 SOURCE extension point for `lg-at' updates.
 MAYBE must be `lg-nothing' or `(lg-just . VALUE)'.")
 
-(cl-defgeneric lg--list-keyed-present-and-value (kind source key &optional testfn)
-  "List-backed keyed read dispatch by KIND.")
+(cl-defgeneric lg--list-ix-get (kind source key &optional testfn)
+  "List-backed map-like read dispatch by KIND.")
 
-(cl-defgeneric lg--list-keyed-set-existing (kind source key value &optional testfn)
-  "List-backed keyed update dispatch by KIND.")
+(cl-defgeneric lg--list-ix-set (kind source key value &optional testfn)
+  "List-backed map-like existing-key update dispatch by KIND.")
 
-(cl-defgeneric lg--list-keyed-set-maybe (kind source key maybe &optional testfn)
-  "List-backed keyed maybe update dispatch by KIND.")
+(cl-defgeneric lg--list-at-set (kind source key maybe &optional testfn)
+  "List-backed map-like maybe update dispatch by KIND.")
 
 (cl-defmethod lg-ix-get ((source hash-table) key &optional _testfn)
   (let* ((missing (make-symbol "lg-absent"))
@@ -849,7 +764,7 @@ MAYBE must be `lg-nothing' or `(lg-just . VALUE)'.")
       (lg-just value))))
 
 (cl-defmethod lg-ix-get ((source list) key &optional testfn)
-  (lg--list-keyed-present-and-value (lg--list-keyed-kind source) source key testfn))
+  (lg--list-ix-get (lg--list-ix-kind source) source key testfn))
 
 (cl-defmethod lg-at-get (source key &optional testfn)
   (lg-ix-get source key testfn))
@@ -864,7 +779,7 @@ MAYBE must be `lg-nothing' or `(lg-just . VALUE)'.")
         copy))))
 
 (cl-defmethod lg-ix-set ((source list) key value &optional testfn)
-  (lg--list-keyed-set-existing (lg--list-keyed-kind source) source key value testfn))
+  (lg--list-ix-set (lg--list-ix-kind source) source key value testfn))
 
 (cl-defmethod lg-at-set (source _key maybe &optional _testfn)
   (unless (or (lg-nothing-p maybe) (lg-just-p maybe))
@@ -879,42 +794,93 @@ MAYBE must be `lg-nothing' or `(lg-just . VALUE)'.")
     copy))
 
 (cl-defmethod lg-at-set ((source list) key maybe &optional testfn)
-  (lg--list-keyed-set-maybe (lg--list-keyed-kind source) source key maybe testfn))
+  (lg--list-at-set (lg--list-ix-kind source) source key maybe testfn))
 
-(cl-defmethod lg--list-keyed-present-and-value ((kind (eql plist)) source key &optional testfn)
-  (lg--plist-present-and-value source key (or testfn #'eq)))
+(cl-defmethod lg--list-ix-get ((kind (eql plist)) source key &optional testfn)
+  (let ((rest source)
+        found
+        value)
+    (while rest
+      (let ((candidate (car rest))
+            (candidate-value (cadr rest)))
+        (when (and (not found) (funcall (or testfn #'eq) candidate key))
+          (setq found t
+                value candidate-value))
+        (setq rest (cddr rest))))
+    (if found (lg-just value) lg-nothing)))
 
-(cl-defmethod lg--list-keyed-present-and-value ((kind (eql alist)) source key &optional testfn)
-  (lg--alist-present-and-value source key (or testfn #'equal)))
+(cl-defmethod lg--list-ix-get ((kind (eql alist)) source key &optional testfn)
+  (let ((cell (cl-find-if (lambda (entry)
+                            (funcall (or testfn #'equal) (car entry) key))
+                          source)))
+    (if cell (lg-just (cdr cell)) lg-nothing)))
 
-(cl-defmethod lg--list-keyed-present-and-value ((kind null) source _key &optional _testfn)
-  (error "Unsupported keyed list source shape: %S" source))
+(cl-defmethod lg--list-ix-get ((kind null) source _key &optional _testfn)
+  (error "Unsupported list map-like source shape: %S" source))
 
-(cl-defmethod lg--list-keyed-set-existing ((kind (eql plist)) source key value &optional testfn)
-  (if (lg-just-p (lg--plist-present-and-value source key (or testfn #'eq)))
-      (lg--plist-update-first source key value (or testfn #'eq))
-    source))
+(cl-defmethod lg--list-ix-set ((kind (eql plist)) source key value &optional testfn)
+  (let ((rest source)
+        (result nil)
+        (updated nil)
+        (test (or testfn #'eq)))
+    (while rest
+      (let ((candidate (car rest))
+            (candidate-value (cadr rest)))
+        (if (and (not updated) (funcall test candidate key))
+            (progn
+              (setq updated t)
+              (setq result (append result (list candidate value))))
+          (setq result (append result (list candidate candidate-value)))))
+      (setq rest (cddr rest)))
+    result))
 
-(cl-defmethod lg--list-keyed-set-existing ((kind (eql alist)) source key value &optional testfn)
-  (if (lg-just-p (lg--alist-present-and-value source key (or testfn #'equal)))
-      (lg--alist-update-first source key value (or testfn #'equal))
-    source))
+(cl-defmethod lg--list-ix-set ((kind (eql alist)) source key value &optional testfn)
+  (let ((updated nil)
+        (test (or testfn #'equal)))
+    (mapcar (lambda (entry)
+              (if (and (not updated) (funcall test (car entry) key))
+                  (progn
+                    (setq updated t)
+                    (cons (car entry) value))
+                entry))
+            source)))
 
-(cl-defmethod lg--list-keyed-set-existing ((kind null) source _key _value &optional _testfn)
-  (error "Unsupported keyed list source shape: %S" source))
+(cl-defmethod lg--list-ix-set ((kind null) source _key _value &optional _testfn)
+  (error "Unsupported list map-like source shape: %S" source))
 
-(cl-defmethod lg--list-keyed-set-maybe ((kind (eql plist)) source key maybe &optional testfn)
-  (if (lg-just-p maybe)
-      (lg--plist-set-first-or-add source key (cdr maybe) (or testfn #'eq))
-    (lg--plist-remove-first source key (or testfn #'eq))))
+(cl-defmethod lg--list-at-set ((kind (eql plist)) source key maybe &optional testfn)
+  (let ((test (or testfn #'eq)))
+    (if (lg-just-p maybe)
+        (if (lg-just-p (lg--list-ix-get kind source key test))
+            (lg--list-ix-set kind source key (cdr maybe) test)
+          (append source (list key (cdr maybe))))
+      (let ((rest source)
+            (result nil)
+            (removed nil))
+        (while rest
+          (let ((candidate (car rest))
+                (candidate-value (cadr rest)))
+            (if (and (not removed) (funcall test candidate key))
+                (setq removed t)
+              (setq result (append result (list candidate candidate-value)))))
+          (setq rest (cddr rest)))
+        result))))
 
-(cl-defmethod lg--list-keyed-set-maybe ((kind (eql alist)) source key maybe &optional testfn)
-  (if (lg-just-p maybe)
-      (lg--alist-set-first-or-add source key (cdr maybe) (or testfn #'equal))
-    (lg--alist-remove-first source key (or testfn #'equal))))
+(cl-defmethod lg--list-at-set ((kind (eql alist)) source key maybe &optional testfn)
+  (let ((test (or testfn #'equal)))
+    (if (lg-just-p maybe)
+        (if (lg-just-p (lg--list-ix-get kind source key test))
+            (lg--list-ix-set kind source key (cdr maybe) test)
+          (append source (list (cons key (cdr maybe)))))
+      (let ((result nil)
+            (removed nil))
+        (dolist (entry source (nreverse result))
+          (if (and (not removed) (funcall test (car entry) key))
+              (setq removed t)
+            (push entry result)))))))
 
-(cl-defmethod lg--list-keyed-set-maybe ((kind null) source _key _maybe &optional _testfn)
-  (error "Unsupported keyed list source shape: %S" source))
+(cl-defmethod lg--list-at-set ((kind null) source _key _maybe &optional _testfn)
+  (error "Unsupported list map-like source shape: %S" source))
 
 (defun lg-affine (preview-fn set-fn)
   "Build an affine traversal from PREVIEW-FN and SET-FN.
@@ -944,11 +910,6 @@ TESTFN applies to plist/alist key comparisons."
      (lambda (source new-focus)
        (lg-ix-set source key new-focus testfn))))
 
-(defun lg-ix-maybe (key &optional testfn)
-  "Affine traversal equivalent to `lg-ix'.
-Use with `lg-preview-maybe' to disambiguate missing vs present nil."
-  (lg-ix key testfn))
-
 (defconst lg-unmaybe
   (lg-lens
    #'lg-maybe-value
@@ -971,10 +932,6 @@ TESTFN applies to plist/alist key comparisons."
    (lambda (source maybe)
      (lg-at-set source key maybe testfn))))
 
-(defun lg-at-maybe (key &optional testfn)
-  "Alias for `lg-at'."
-  (lg-at key testfn))
-
 (defun lg-hash-key (key)
   "Affine traversal focusing existing KEY in a hash table."
   (lg-ix key))
@@ -982,10 +939,6 @@ TESTFN applies to plist/alist key comparisons."
 (defun lg-hash-key-at (key)
   "Lens focusing presence and value for KEY in a hash table."
   (lg-at key))
-
-(defun lg-hash-key-at-maybe (key)
-  "Lens focusing tagged maybe presence/value for KEY in a hash table."
-  (lg-at-maybe key))
 
 (defun lg-over (optic fn source)
   "Apply FN over OPTIC focus in SOURCE."
