@@ -24,24 +24,12 @@
   (with-temp-buffer
     (insert "hello")
     (let ((buffer (current-buffer)))
-      (lg-run-state-on-ref! (lg-state-set-of lg-buffer-state-string "updated") buffer)
+      (lg-over lg-buffer-string (lambda (_text) "updated") buffer)
       (should (equal (buffer-string) "updated"))
-      (lg-run-state-on-ref! (lg-state-set-of lg-buffer-state-point 1) buffer)
+      (lg-set lg-buffer-point 1 buffer)
       (should (= (point) 1))
-      (let ((viewed (lg-run-state-on-ref! (lg-state-view-of lg-buffer-state-string) buffer)))
+      (let ((viewed (lg-view lg-buffer-string buffer)))
         (should (equal viewed "updated"))))))
-
-(ert-deftest lg-buffer-reversible-edit ()
-  (with-temp-buffer
-    (insert "hello")
-    (let* ((buffer (current-buffer))
-           (undo (lg-ref-over-edit! lg-buffer-state-string
-                                    (lambda (text)
-                                      (concat text " world"))
-                                    buffer)))
-      (should (equal (buffer-string) "hello world"))
-      (funcall undo)
-      (should (equal (buffer-string) "hello")))))
 
 (ert-deftest lg-buffer-state-monad-sequencing ()
   (with-temp-buffer
@@ -49,19 +37,26 @@
     (goto-char 1)
     (set-mark 6)
     (let* ((buffer (current-buffer))
-           (program
+           (program nil)
+           (result-state nil)
+           (result nil)
+           (final-buffer nil))
+      (setq program
             (lg-state-bind
-             (lg-state-view-of lg-buffer-state-string)
+             (lg-state-view-of lg-buffer-string)
              (lambda (before)
                (lg-state-bind
-                (lg-state-over-of lg-buffer-state-region-string #'upcase)
+                (lg-state-over-of lg-buffer-region-string #'upcase)
                 (lambda (_ignored)
                   (lg-state-bind
-                   (lg-state-view-of lg-buffer-state-string)
+                   (lg-state-view-of lg-buffer-string)
                    (lambda (after)
                      (lg-state-pure (cons before after)))))))))
-           (result (lg-run-state-on-ref! program buffer)))
+      (setq result-state (lg-run-state program buffer))
+      (setq result (car result-state))
+      (setq final-buffer (cdr result-state))
       (should (equal result '("hello world" . "HELLO world")))
+      (should (eq final-buffer buffer))
       (should (equal (buffer-string) "HELLO world")))))
 
 (ert-deftest lg-buffer-ref-bang-helpers ()
@@ -70,10 +65,47 @@
     (goto-char 1)
     (set-mark 6)
     (let ((buffer (current-buffer)))
-      (should (eq (lg-over! lg-buffer-state-region-string #'upcase buffer) buffer))
+      (should (eq (lg-over! lg-buffer-region-string #'upcase buffer) buffer))
       (should (equal (buffer-string) "ALPHA beta"))
-      (should (eq (lg-set! lg-buffer-state-point 3 buffer) buffer))
+      (should (eq (lg-set! lg-buffer-point 3 buffer) buffer))
       (should (= (point) 3)))))
+
+(ert-deftest lg-buffer-effect-programs ()
+  (with-temp-buffer
+    (insert "hello world")
+    (goto-char 1)
+    (set-mark 6)
+    (let* ((buffer (current-buffer))
+           (program nil)
+           (result nil))
+      (setq program
+            (lg-effect-bind
+             (lg-effect-view-of lg-buffer-string)
+             (lambda (before)
+               (lg-effect-bind
+                (lg-effect-over-of lg-buffer-region-string #'upcase)
+                (lambda (_)
+                  (lg-effect-map
+                   (lambda (after)
+                     (cons before after))
+                   (lg-effect-view-of lg-buffer-string)))))))
+      (setq result (lg-run-effect program buffer))
+      (should (equal result '("hello world" . "HELLO world")))
+      (should (equal (buffer-string) "HELLO world")))))
+
+(ert-deftest lg-buffer-effect-operations-dispatch ()
+  (with-temp-buffer
+    (insert "abc")
+    (let ((buffer (current-buffer)))
+      (should (= (lg-run-effect
+                  (lg-effect-perform (make-lg-buffer-op-point-get))
+                  buffer)
+                 (point-max)))
+      (should (eq (lg-run-effect
+                   (lg-effect-perform (make-lg-buffer-op-string-set :text "xyz"))
+                   buffer)
+                  buffer))
+      (should (equal (buffer-string) "xyz")))))
 
 (provide 'looking-glass-buffer-test)
 

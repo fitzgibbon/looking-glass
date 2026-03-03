@@ -32,6 +32,23 @@
 (cl-defstruct lg-state
   run)
 
+(cl-defstruct lg-effect
+  run)
+
+(cl-defstruct lg-effect-op-view
+  optic)
+
+(cl-defstruct lg-effect-op-preview
+  optic)
+
+(cl-defstruct lg-effect-op-over
+  optic
+  fn)
+
+(cl-defstruct lg-effect-op-set
+  optic
+  value)
+
 (cl-defstruct lg-const
   value)
 
@@ -385,77 +402,98 @@ Returns (RESULT . FINAL-STATE)."
   "Return a state computation that sets OPTIC focus to VALUE."
   (lg-state-over-of optic (lambda (_focus) value)))
 
-(cl-defgeneric lg-ref-read (ref)
-  "Return immutable state snapshot for mutable REF.")
+(defun lg-effect-pure (value)
+  "Return an effect program that yields VALUE."
+  (make-lg-effect :run (lambda (_context)
+                         value)))
 
-(cl-defgeneric lg-ref-write (ref state)
-  "Write STATE snapshot into mutable REF and return REF.")
+(defun lg-effect-map (fn effect)
+  "Map FN over EFFECT result value."
+  (make-lg-effect :run (lambda (context)
+                         (funcall fn
+                                  (funcall (lg-effect-run effect) context)))))
 
-(defun lg-run-state-on-ref! (st ref)
-  "Run state computation ST against mutable REF.
-Uses `lg-ref-read' and `lg-ref-write'. Returns ST result value."
-  (let* ((initial-state (lg-ref-read ref))
-         (result (lg-run-state st initial-state))
-         (value (car result))
-         (final-state (cdr result)))
-    (lg-ref-write ref final-state)
-    value))
+(defun lg-effect-bind (effect fn)
+  "Sequence EFFECT with FN.
+FN receives EFFECT result and must return another effect program." 
+  (make-lg-effect
+   :run (lambda (context)
+          (let* ((value (funcall (lg-effect-run effect) context))
+                 (next (funcall fn value)))
+            (funcall (lg-effect-run next) context)))))
 
-(defun lg-view! (optic ref)
-  "View OPTIC from mutable REF state without mutating REF."
-  (lg-view optic (lg-ref-read ref)))
+(defun lg-effect-ap (effect-fn effect-value)
+  "Apply effectful function EFFECT-FN to EFFECT-VALUE."
+  (lg-effect-bind effect-fn
+                  (lambda (fn)
+                    (lg-effect-bind effect-value
+                                    (lambda (value)
+                                      (lg-effect-pure (funcall fn value)))))))
 
-(defun lg-preview! (optic ref)
-  "Preview OPTIC from mutable REF state without mutating REF."
-  (lg-preview optic (lg-ref-read ref)))
+(cl-defgeneric lg-effect-handle (context operation)
+  "Handle OPERATION in CONTEXT.")
 
-(defun lg-over! (optic fn ref)
-  "Mutate REF by applying FN over OPTIC focus in REF state.
-Returns REF."
-  (lg-run-state-on-ref! (lg-state-over-of optic fn) ref)
-  ref)
+(cl-defmethod lg-effect-handle (context (operation lg-effect-op-view))
+  (lg-view (lg-effect-op-view-optic operation) context))
 
-(defun lg-set! (optic value ref)
-  "Mutate REF by setting OPTIC focus to VALUE in REF state.
-Returns REF."
-  (lg-run-state-on-ref! (lg-state-set-of optic value) ref)
-  ref)
+(cl-defmethod lg-effect-handle (context (operation lg-effect-op-preview))
+  (lg-preview (lg-effect-op-preview-optic operation) context))
 
-(defun lg-ref-over-edit! (optic fn ref)
-  "Apply reversible OPTIC update to REF and return undo thunk.
-The returned thunk restores the exact pre-edit REF snapshot."
-  (let* ((before (lg-ref-read ref))
-         (after (lg-over optic fn before)))
-    (lg-ref-write ref after)
-    (lambda ()
-      (lg-ref-write ref before)
-      ref)))
+(cl-defmethod lg-effect-handle (context (operation lg-effect-op-over))
+  (lg-over (lg-effect-op-over-optic operation)
+           (lg-effect-op-over-fn operation)
+           context))
 
-(defun lg-ref-set-edit! (optic value ref)
-  "Set OPTIC to VALUE on REF and return undo thunk."
-  (lg-ref-over-edit! optic (lambda (_focus) value) ref))
+(cl-defmethod lg-effect-handle (context (operation lg-effect-op-set))
+  (lg-set (lg-effect-op-set-optic operation)
+          (lg-effect-op-set-value operation)
+          context))
 
-(defun lg-ref-lens (state-lens)
-  "Lift STATE-LENS to a mutable lens over refs.
-STATE-LENS must be a lens over snapshots returned by `lg-ref-read'."
-  (lg-lens
-   (lambda (ref)
-     (lg-view state-lens (lg-ref-read ref)))
-   (lambda (ref new-focus)
-     (let ((state (lg-ref-read ref)))
-       (lg-ref-write ref (lg-set state-lens new-focus state))
-       ref))))
+(defun lg-effect-perform (operation)
+  "Lift OPERATION into an effect program.
+Dispatch is provided by `lg-effect-handle'."
+  (make-lg-effect :run (lambda (context)
+                         (lg-effect-handle context operation))))
 
-(defun lg-ref-affine (state-affine)
-  "Lift STATE-AFFINE to a mutable affine traversal over refs.
-STATE-AFFINE must be an affine optic over snapshots from `lg-ref-read'."
-  (lg-affine
-   (lambda (ref)
-     (lg-preview state-affine (lg-ref-read ref)))
-   (lambda (ref new-focus)
-     (let ((state (lg-ref-read ref)))
-       (lg-ref-write ref (lg-set state-affine new-focus state))
-       ref))))
+(defun lg-run-effect (effect context)
+  "Run EFFECT program in CONTEXT and return its result."
+  (funcall (lg-effect-run effect) context))
+
+(defun lg-effect-view-of (optic)
+  "Return an effectful view operation for OPTIC."
+  (lg-effect-perform (make-lg-effect-op-view :optic optic)))
+
+(defun lg-effect-preview-of (optic)
+  "Return an effectful preview operation for OPTIC."
+  (lg-effect-perform (make-lg-effect-op-preview :optic optic)))
+
+(defun lg-effect-over-of (optic fn)
+  "Return an effectful update operation applying FN over OPTIC."
+  (lg-effect-perform (make-lg-effect-op-over :optic optic :fn fn)))
+
+(defun lg-effect-set-of (optic value)
+  "Return an effectful set operation for OPTIC and VALUE."
+  (lg-effect-perform (make-lg-effect-op-set :optic optic :value value)))
+
+(defun lg-view! (optic source)
+  "View OPTIC focus in SOURCE.
+This is an effect-marked synonym for `lg-view'."
+  (lg-run-effect (lg-effect-view-of optic) source))
+
+(defun lg-preview! (optic source)
+  "Preview OPTIC focus in SOURCE.
+This is an effect-marked synonym for `lg-preview'."
+  (lg-run-effect (lg-effect-preview-of optic) source))
+
+(defun lg-over! (optic fn source)
+  "Apply FN over OPTIC focus in SOURCE.
+For mutable sources this performs in-place mutation and returns SOURCE."
+  (lg-run-effect (lg-effect-over-of optic fn) source))
+
+(defun lg-set! (optic value source)
+  "Set OPTIC focus to VALUE in SOURCE.
+For mutable sources this performs in-place mutation and returns SOURCE."
+  (lg-run-effect (lg-effect-set-of optic value) source))
 
 (defconst lg-monoid-list
   (make-lg-monoid :empty nil :append #'append)

@@ -19,158 +19,143 @@
       value
     (error "Expected live buffer")))
 
-(cl-defstruct lg-buffer--state
-  text
-  point
-  mark)
+(cl-defstruct lg-buffer-op-point-get)
+(cl-defstruct lg-buffer-op-point-set point)
+(cl-defstruct lg-buffer-op-mark-get)
+(cl-defstruct lg-buffer-op-mark-set mark)
+(cl-defstruct lg-buffer-op-string-get)
+(cl-defstruct lg-buffer-op-string-set text)
+(cl-defstruct lg-buffer-op-region-get)
+(cl-defstruct lg-buffer-op-region-set text)
+(cl-defstruct lg-buffer-op-substring-get start end)
+(cl-defstruct lg-buffer-op-substring-set start end text)
 
-(defun lg-buffer--bounds-for-text (text)
-  "Return (MIN . MAX) bounds for TEXT as buffer-like positions."
-  (cons 1 (1+ (length text))))
-
-(defun lg-buffer--clamp-position (position text)
-  "Clamp POSITION to valid bounds for TEXT."
-  (let* ((bounds (lg-buffer--bounds-for-text text))
-         (min-pos (car bounds))
-         (max-pos (cdr bounds)))
-    (max min-pos (min max-pos position))))
-
-(defun lg-buffer--capture-state (buffer)
-  "Capture immutable snapshot state from live BUFFER."
+(cl-defmethod lg-effect-handle ((buffer buffer) (_op lg-buffer-op-point-get))
   (with-current-buffer (lg-buffer--live-buffer buffer)
-    (make-lg-buffer--state
-     :text (buffer-substring-no-properties (point-min) (point-max))
-     :point (point)
-     :mark (mark t))))
+    (point)))
 
-(defun lg-buffer--apply-state (buffer state)
-  "Apply immutable snapshot STATE into live BUFFER."
-  (let* ((text (lg-buffer--state-text state))
-         (clamped-point (lg-buffer--clamp-position (lg-buffer--state-point state) text))
-         (mark-value (lg-buffer--state-mark state))
-         (clamped-mark (when mark-value
-                         (lg-buffer--clamp-position mark-value text))))
-    (with-current-buffer (lg-buffer--live-buffer buffer)
-      (erase-buffer)
-      (insert text)
-      (goto-char clamped-point)
-      (set-mark clamped-mark))
-    buffer))
+(cl-defmethod lg-effect-handle ((buffer buffer) (op lg-buffer-op-point-set))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (goto-char (max (point-min)
+                    (min (point-max) (lg-buffer-op-point-set-point op)))))
+  buffer)
 
-(cl-defmethod lg-ref-read ((buffer buffer))
-  (lg-buffer--capture-state buffer))
+(cl-defmethod lg-effect-handle ((buffer buffer) (_op lg-buffer-op-mark-get))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (mark t)))
 
-(cl-defmethod lg-ref-write ((buffer buffer) (state lg-buffer--state))
-  (lg-buffer--apply-state buffer state))
+(cl-defmethod lg-effect-handle ((buffer buffer) (op lg-buffer-op-mark-set))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (if (lg-buffer-op-mark-set-mark op)
+        (set-mark (lg-buffer-op-mark-set-mark op))
+      (set-mark nil)))
+  buffer)
 
-(defconst lg-buffer--point-o
-  (lg-lens
-   #'lg-buffer--state-point
-   (lambda (state new-point)
-     (make-lg-buffer--state
-      :text (lg-buffer--state-text state)
-      :point (lg-buffer--clamp-position new-point (lg-buffer--state-text state))
-      :mark (lg-buffer--state-mark state)))))
+(cl-defmethod lg-effect-handle ((buffer buffer) (_op lg-buffer-op-string-get))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (buffer-substring-no-properties (point-min) (point-max))))
 
-(defconst lg-buffer--mark-o
-  (lg-lens
-   #'lg-buffer--state-mark
-   (lambda (state new-mark)
-     (make-lg-buffer--state
-      :text (lg-buffer--state-text state)
-      :point (lg-buffer--state-point state)
-      :mark (when new-mark
-              (lg-buffer--clamp-position new-mark (lg-buffer--state-text state)))))))
+(cl-defmethod lg-effect-handle ((buffer buffer) (op lg-buffer-op-string-set))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (erase-buffer)
+    (insert (lg-buffer-op-string-set-text op)))
+  buffer)
 
-(defconst lg-buffer--string-o
-  (lg-lens
-   #'lg-buffer--state-text
-   (lambda (state new-text)
-     (make-lg-buffer--state
-      :text new-text
-      :point (lg-buffer--clamp-position (lg-buffer--state-point state) new-text)
-      :mark (let ((mark-value (lg-buffer--state-mark state)))
-              (when mark-value
-                (lg-buffer--clamp-position mark-value new-text)))))))
+(cl-defmethod lg-effect-handle ((buffer buffer) (_op lg-buffer-op-region-get))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (if (mark t)
+        (let ((start (min (point) (mark t)))
+              (end (max (point) (mark t))))
+          (lg-just (buffer-substring-no-properties start end)))
+      lg-nothing)))
 
-(defconst lg-buffer--region-string-o
-  (lg-affine
-   (lambda (state)
-     (let ((mark-value (lg-buffer--state-mark state)))
-       (if (null mark-value)
-           lg-nothing
-         (let* ((text (lg-buffer--state-text state))
-                (point-value (lg-buffer--state-point state))
-                (start (min point-value mark-value))
-                (end (max point-value mark-value)))
-           (lg-just (substring text (1- start) (1- end)))))))
-   (lambda (state new-text)
-     (let ((mark-value (lg-buffer--state-mark state)))
-       (if (null mark-value)
-           state
-         (let* ((text (lg-buffer--state-text state))
-                (point-value (lg-buffer--state-point state))
-                (start (min point-value mark-value))
-                (end (max point-value mark-value))
-                (replaced (concat (substring text 0 (1- start))
-                                  new-text
-                                  (substring text (1- end))))
-                (new-pos (+ start (length new-text))))
-            (make-lg-buffer--state
-             :text replaced
-             :point new-pos
-             :mark new-pos)))))))
+(cl-defmethod lg-effect-handle ((buffer buffer) (op lg-buffer-op-region-set))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (if (mark t)
+        (let ((start (min (point) (mark t)))
+              (end (max (point) (mark t)))
+              (text (lg-buffer-op-region-set-text op)))
+          (delete-region start end)
+          (goto-char start)
+          (insert text)
+          (set-mark (+ start (length text))))
+      buffer))
+  buffer)
+
+(cl-defmethod lg-effect-handle ((buffer buffer) (op lg-buffer-op-substring-get))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (buffer-substring-no-properties
+     (lg-buffer-op-substring-get-start op)
+     (lg-buffer-op-substring-get-end op))))
+
+(cl-defmethod lg-effect-handle ((buffer buffer) (op lg-buffer-op-substring-set))
+  (with-current-buffer (lg-buffer--live-buffer buffer)
+    (goto-char (lg-buffer-op-substring-set-start op))
+    (delete-region (lg-buffer-op-substring-set-start op)
+                   (lg-buffer-op-substring-set-end op))
+    (insert (lg-buffer-op-substring-set-text op)))
+  buffer)
 
 (defconst lg-buffer-point
-  (lg-ref-lens lg-buffer--point-o)
+  (lg-lens
+   (lambda (buffer)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-point-get))
+      buffer))
+   (lambda (buffer new-point)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-point-set :point new-point))
+      buffer)))
   "Lens focusing point position in a buffer.")
 
-(defconst lg-buffer-state-point
-  lg-buffer--point-o
-  "Pure lens focusing point position in `lg-buffer--state'.")
-
 (defconst lg-buffer-mark
-  (lg-ref-lens lg-buffer--mark-o)
+  (lg-lens
+   (lambda (buffer)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-mark-get))
+      buffer))
+   (lambda (buffer new-mark)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-mark-set :mark new-mark))
+      buffer)))
   "Lens focusing mark position in a buffer.")
 
-(defconst lg-buffer-state-mark
-  lg-buffer--mark-o
-  "Pure lens focusing mark position in `lg-buffer--state'.")
-
 (defconst lg-buffer-string
-  (lg-ref-lens lg-buffer--string-o)
+  (lg-lens
+   (lambda (buffer)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-string-get))
+      buffer))
+   (lambda (buffer new-contents)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-string-set :text new-contents))
+      buffer)))
   "Lens focusing full text contents of a buffer.")
 
-(defconst lg-buffer-state-string
-  lg-buffer--string-o
-  "Pure lens focusing full text contents in `lg-buffer--state'.")
-
 (defconst lg-buffer-region-string
-  (lg-ref-affine lg-buffer--region-string-o)
+  (lg-affine
+   (lambda (buffer)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-region-get))
+      buffer))
+   (lambda (buffer new-text)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-region-set :text new-text))
+      buffer)))
   "Affine traversal focusing active region text in a buffer.")
-
-(defconst lg-buffer-state-region-string
-  lg-buffer--region-string-o
-  "Pure affine optic focusing active region text in `lg-buffer--state'.")
 
 (defun lg-buffer-substring (start end)
   "Lens focusing text in fixed START/END buffer positions."
-  (let ((state-substring
-         (lg-lens
-          (lambda (state)
-            (substring (lg-buffer--state-text state) (1- start) (1- end)))
-          (lambda (state new-text)
-            (let* ((text (lg-buffer--state-text state))
-                   (replaced (concat (substring text 0 (1- start))
-                                     new-text
-                                     (substring text (1- end)))))
-              (make-lg-buffer--state
-               :text replaced
-               :point (lg-buffer--clamp-position (lg-buffer--state-point state) replaced)
-               :mark (let ((mark-value (lg-buffer--state-mark state)))
-                       (when mark-value
-                         (lg-buffer--clamp-position mark-value replaced)))))))))
-    (lg-ref-lens state-substring)))
+  (lg-lens
+   (lambda (buffer)
+     (lg-run-effect
+      (lg-effect-perform (make-lg-buffer-op-substring-get :start start :end end))
+      buffer))
+   (lambda (buffer new-text)
+     (lg-run-effect
+      (lg-effect-perform
+       (make-lg-buffer-op-substring-set :start start :end end :text new-text))
+      buffer))))
 
 (provide 'looking-glass-buffer)
 

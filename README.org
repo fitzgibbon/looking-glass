@@ -386,52 +386,54 @@ Internal representation profunctors are exposed in code comments and naming:
 ;; => "ALPHA\r\nBETA\u2028GAMMA\n"
 #+end_src
 
-** 18) Stateful buffer updates (monad + bang helpers)
+** 18) Stateful buffer updates (live buffer edits)
 
 #+begin_src elisp
-;; Work with a live buffer through snapshot optics.
+;; Sequence live buffer edits with the state monad.
 (with-temp-buffer
   (insert "hello world")
   (goto-char 1)
   (set-mark 6)
   (let* ((buffer (current-buffer))
          (program
-          (lg-state-bind
-           (lg-state-view-of lg-buffer-state-string)
-           (lambda (before)
-             (lg-state-bind
-              (lg-state-over-of lg-buffer-state-region-string #'upcase)
-              (lambda (_)
-                (lg-state-bind
-                 (lg-state-view-of lg-buffer-state-string)
-                 (lambda (after)
-                   (lg-state-pure (cons before after)))))))))))
-    (lg-run-state-on-ref! program buffer)))
+           (lg-state-bind
+            (lg-state-view-of lg-buffer-string)
+            (lambda (before)
+              (lg-state-bind
+               (lg-state-over-of lg-buffer-region-string #'upcase)
+               (lambda (_)
+                 (lg-state-bind
+                  (lg-state-view-of lg-buffer-string)
+                  (lambda (after)
+                    (lg-state-pure (cons before after)))))))))))
+    (car (lg-run-state program buffer))))
 ;; => ("hello world" . "HELLO world")
 
-;; For direct mutation, use bang helpers over ref optics.
+;; For direct mutation, use bang helpers over buffer optics.
 (with-temp-buffer
   (insert "alpha beta")
   (goto-char 1)
   (set-mark 6)
   (let ((buffer (current-buffer)))
-    (lg-over! lg-buffer-state-region-string #'upcase buffer)
-    (lg-set! lg-buffer-state-point 3 buffer)
+    (lg-over! lg-buffer-region-string #'upcase buffer)
+    (lg-set! lg-buffer-point 3 buffer)
     (buffer-string)))
 ;; => "ALPHA beta"
 
-;; Reversible edit token.
+;; Open effects: same edit flow using the effect interpreter.
 (with-temp-buffer
-  (insert "hello")
+  (insert "x y")
+  (goto-char 1)
+  (set-mark 2)
   (let* ((buffer (current-buffer))
-         (undo (lg-ref-over-edit! lg-buffer-state-string
-                                  (lambda (text) (concat text " world"))
-                                  buffer)))
-    (buffer-string)
-    ;; => "hello world"
-    (funcall undo)
-    (buffer-string)))
-;; => "hello"
+         (program
+          (lg-effect-bind
+           (lg-effect-over-of lg-buffer-region-string #'upcase)
+           (lambda (_)
+             (lg-effect-view-of lg-buffer-string)))))
+    (lg-run-effect program buffer)))
+;; => "X y"
+
 #+end_src
 
 * Main API groups
@@ -444,7 +446,8 @@ Internal representation profunctors are exposed in code comments and naming:
 - Boolean adapters: =lg-unbool=, =lg-not=
 - Maybe adapters: =lg-unmaybe=
 - Viewing and updates: =lg-view=, =lg-preview=, =lg-over=, =lg-set=
-- Stateful refs/monad: =lg-state-pure=, =lg-state-bind=, =lg-state-ap=, =lg-state-over-of=, =lg-run-state-on-ref!=, =lg-over!=, =lg-set!=, =lg-ref-over-edit!=
+- State monad + effect-marked updates: =lg-state-pure=, =lg-state-bind=, =lg-state-ap=, =lg-run-state=, =lg-eval-state=, =lg-exec-state=, =lg-over!=, =lg-set!=
+- Open effect system: =lg-effect-pure=, =lg-effect-bind=, =lg-effect-ap=, =lg-effect-perform=, =lg-run-effect=, =lg-effect-handle=
 - Folds: =lg-to-list-of=, =lg-foldl-of=, =lg-foldr-of=, =lg-fold-map-of=, =lg-first-of=, =lg-last-of=, =lg-find-of=, =lg-any-of=, =lg-all-of=, =lg-length-of=, =lg-sum-of=, =lg-product-of=, =lg-minimum-of=, =lg-maximum-of=
 - Indexed folds and updates: =lg-ito-list-of=, =lg-ifoldl-of=, =lg-ifoldr-of=, =lg-ifold-map-of=, =lg-ifirst-of=, =lg-ilast-of=, =lg-ifind-of=, =lg-ilength-of=, =lg-isum-of=, =lg-iproduct-of=, =lg-iminimum-of=, =lg-imaximum-of=, =lg-iover=
 - Review helpers: =lg-review=, =lg-unto=, =lg-reviews=
@@ -453,7 +456,7 @@ Internal representation profunctors are exposed in code comments and naming:
 
 ** Extension packages
 
-- =looking-glass-buffer=: buffer-oriented ref optics (=lg-buffer-point=, =lg-buffer-string=, =lg-buffer-region-string=, ...) plus pure snapshot optics (=lg-buffer-state-point=, =lg-buffer-state-string=, ...)
+- =looking-glass-buffer=: buffer-oriented optics for live mutation (=lg-buffer-point=, =lg-buffer-string=, =lg-buffer-region-string=, ...)
 - =looking-glass-regex=: regex/string optics (=lg-regex-match=, =lg-regex-group=, =lg-regex-all=, =lg-worded=, =lg-lined=, ...)
 
 * Documentation
