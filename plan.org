@@ -55,3 +55,16 @@
 ** TODO tree-sitter major mode implementation of the generic interface
 ** TODO elisp-mode implementation of the generic interface
 ** TODO outline and org-mode implementations of the generic interface
+* DONE Add effectful wrappers for optic operations
+** DONE Extend core effect API with wrappers for read/update/fold/indexed helpers
+   - [X] Add effect constructors for source-dependent helpers (lists, folds, predicates, summaries)
+   - [X] Add effect constructors for review/reviews and preview-or style helpers
+   - [X] Add bang helpers that run the new effect constructors immediately
+** DONE Add tests for new effectful helpers
+   - [X] Verify new effect constructors return expected results
+   - [X] Verify bang helpers match pure helper behavior
+** DONE Update core manual with new effectful API surface
+   - [X] Document naming conventions for ~lg-effect-*-of~ and ~*!~ helpers
+   - [X] Add examples for fold and indexed effect helpers
+** DONE Validate effectful helper additions
+   - [X] Run full test suite
