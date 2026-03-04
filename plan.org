@@ -1,5 +1,7 @@
 #+TITLE: looking-glass: profunctor lenses in emacs lisp
+* Write documentation
 * TODO Generic optics for navigating, reading and editing buffers based on syntax and major mode
-** TODO tree-sitter implementation
-** TODO elisp-mode implementation
-** TODO outline and org-mode implementations
+** TODO define generic interface for syntax optics
+** TODO tree-sitter major mode implementation of the generic interface
+** TODO elisp-mode implementation of the generic interface
+** TODO outline and org-mode implementations of the generic interface
