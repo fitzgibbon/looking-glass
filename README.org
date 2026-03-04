@@ -106,16 +106,16 @@ Compositional profunctor optics for Emacs Lisp.
 
 * Package map
 
-- `looking-glass.el`: optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
-- `looking-glass-buffer.el`: optics for point/mark/buffer text/region/substring, plus effect dispatch for buffer mutation.
-- `looking-glass-regex.el`: regex and text traversals (`lg-regex-all`, `lg-lined`, `lg-utf8`).
-- `laws.org`: law expectations and nil-disambiguation notes.
+- ~looking-glass.el~: optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
+- ~looking-glass-buffer.el~: optics for point/mark/buffer text/region/substring, plus effect dispatch for buffer mutation.
+- ~looking-glass-regex.el~: regex and text traversals (~lg-regex-all~, ~lg-lined~, ~lg-utf8~).
+- ~laws.org~: law expectations and nil-disambiguation notes.
 
 * Documentation
 
-- Core manual: `doc/looking-glass-manual.org`
-- Buffer manual: `doc/looking-glass-buffer-manual.org`
-- Regex manual: `doc/looking-glass-regex-manual.org`
+- Core manual: ~doc/looking-glass-manual.org~
+- Buffer manual: ~doc/looking-glass-buffer-manual.org~
+- Regex manual: ~doc/looking-glass-regex-manual.org~
 
 These are org-mode manuals intended for Texinfo/Info export.
 
@@ -125,15 +125,15 @@ MELPA packages repository contents from the selected branch/commit. It does not 
 
 This repository uses CI to build manuals and a dedicated release branch strategy:
 
-- source manuals live in `doc/*.org`;
-- CI builds `.texi`, `.info`, and `dir` with `scripts/build-manuals.sh`;
-- release publishing targets a separate `melpa-release` branch (dry-run workflow currently reports the exact commands only);
+- source manuals live in ~doc/*.org~;
+- CI builds ~.texi~, ~.info~, and ~dir~ with ~scripts/build-manuals.sh~;
+- release publishing targets a separate ~melpa-release~ branch (dry-run workflow currently reports the exact commands only);
 - release dry-run steps are gated on a successful full test run.
 
-For `M-x info-display-manual` support in installed packages:
+For ~M-x info-display-manual~ support in installed packages:
 
-- package contents must include the generated `*.info` files;
-- package root must include a `dir` file so package activation can add the directory to `Info-directory-list`.
+- package contents must include the generated ~*.info~ files;
+- package root must include a ~dir~ file so package activation can add the directory to ~Info-directory-list~.
 
 * Tests
 

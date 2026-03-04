@@ -9,7 +9,7 @@
 
 * Top
 
-`looking-glass` is a profunctor-optics toolkit for Emacs Lisp.
+~looking-glass~ is a profunctor-optics toolkit for Emacs Lisp.
 
 It provides one vocabulary for:
 
@@ -34,11 +34,11 @@ It provides one vocabulary for:
 - *Traversal*: zero or many focuses.
 - *Indexed traversal*: traversal that carries an index alongside each focus.
 
-For constructors, see `lg-iso`, `lg-lens`, `lg-prism`, `lg-affine`, `lg-traversal`, and `lg-indexed`.
+For constructors, see ~lg-iso~, ~lg-lens~, ~lg-prism~, ~lg-affine~, ~lg-traversal~, and ~lg-indexed~.
 
 * Composition and basic operations
 
-Compose from right to left with `lg-compose` (or `lg<<`) and from left to right with `lg>>`.
+Compose from right to left with ~lg-compose~ (or ~lg<<~) and from left to right with ~lg>>~.
 
 #+begin_src emacs-lisp
 (let ((optic (lg-compose lg-car lg-cdr)))
@@ -49,16 +49,16 @@ Compose from right to left with `lg-compose` (or `lg<<`) and from left to right 
 
 Core operators:
 
-- `lg-view`, `lg-preview`, `lg-has`
-- `lg-over`, `lg-set`
-- `lg-to-list-of`, `lg-preview-or`
+- ~lg-view~, ~lg-preview~, ~lg-has~
+- ~lg-over~, ~lg-set~
+- ~lg-to-list-of~, ~lg-preview-or~
 
 * Nil semantics and disambiguation
 
 Preview APIs return tagged maybe values:
 
-- `lg-nothing` means no focus exists.
-- `(lg-just . VALUE)` means focus exists, even when `VALUE` is nil.
+- ~lg-nothing~ means no focus exists.
+- ~(lg-just . VALUE)~ means focus exists, even when ~VALUE~ is nil.
 
 #+begin_src emacs-lisp
 (let ((optic (lg-plist-key :name)))
@@ -67,16 +67,16 @@ Preview APIs return tagged maybe values:
 ;; => ((lg-just) lg-nothing)
 #+end_src
 
-`lg-view` signals `lg-no-focus` if missing. `lg-view-non-nil` additionally signals `lg-expected-non-nil` for nil focuses.
+~lg-view~ signals ~lg-no-focus~ if missing. ~lg-view-non-nil~ additionally signals ~lg-expected-non-nil~ for nil focuses.
 
-The adapter `lg-unmaybe` is intentionally lossy and can break full roundtrip lens laws. Use it for ergonomics, not for law-critical transformations.
+The adapter ~lg-unmaybe~ is intentionally lossy and can break full roundtrip lens laws. Use it for ergonomics, not for law-critical transformations.
 
 * Keyed data optics
 
 For plist/alist/hash-table access:
 
-- `lg-ix` focuses existing keys only.
-- `lg-at` focuses presence and value as tagged maybe (`lg-just` or `lg-nothing`).
+- ~lg-ix~ focuses existing keys only.
+- ~lg-at~ focuses presence and value as tagged maybe (~lg-just~ or ~lg-nothing~).
 
 #+begin_src emacs-lisp
 (let ((profile '(:name "Ada" :age 10)))
@@ -92,8 +92,8 @@ For plist/alist/hash-table access:
 
 Built-in traversals include:
 
-- `lg-list`, `lg-vector`, `lg-string`
-- `lg-indexed-list`, `lg-indexed-vector`, `lg-indexed-string`
+- ~lg-list~, ~lg-vector~, ~lg-string~
+- ~lg-indexed-list~, ~lg-indexed-vector~, ~lg-indexed-string~
 
 #+begin_src emacs-lisp
 (list
@@ -104,20 +104,20 @@ Built-in traversals include:
 
 Useful indexed combinators:
 
-- `lg-iover`, `lg-iset`, `lg-ito-list-of`
-- `lg-ireindexed`, `lg-as-indexed`, `lg-unindexed`
-- `lg-ifiltered`, `lg-indices`, `lg-indexed-list-filtered`
+- ~lg-iover~, ~lg-iset~, ~lg-ito-list-of~
+- ~lg-ireindexed~, ~lg-as-indexed~, ~lg-unindexed~
+- ~lg-ifiltered~, ~lg-indices~, ~lg-indexed-list-filtered~
 
 * Folds and summaries
 
 Fold helpers over any traversal:
 
-- `lg-foldl-of`, `lg-foldr-of`, `lg-fold-map-of`
-- `lg-any-of`, `lg-all-of`, `lg-none-of`
-- `lg-length-of`, `lg-sum-of`, `lg-product-of`
-- `lg-maximum-of`, `lg-minimum-of`
+- ~lg-foldl-of~, ~lg-foldr-of~, ~lg-fold-map-of~
+- ~lg-any-of~, ~lg-all-of~, ~lg-none-of~
+- ~lg-length-of~, ~lg-sum-of~, ~lg-product-of~
+- ~lg-maximum-of~, ~lg-minimum-of~
 
-Indexed equivalents exist as `lg-ifold*`, `lg-i*` variants.
+Indexed equivalents exist as ~lg-ifold*~, ~lg-i*~ variants.
 
 #+begin_src emacs-lisp
 (list
@@ -131,7 +131,7 @@ Indexed equivalents exist as `lg-ifold*`, `lg-i*` variants.
 
 * Reviews and reversals
 
-Use `lg-review` for optic-driven construction and `lg-re` to reverse compatible optics.
+Use ~lg-review~ for optic-driven construction and ~lg-re~ to reverse compatible optics.
 
 #+begin_src emacs-lisp
 (let* ((iso (lg-iso #'number-to-string #'string-to-number))
@@ -141,18 +141,18 @@ Use `lg-review` for optic-driven construction and `lg-re` to reverse compatible 
 ;; => (42 42)
 #+end_src
 
-`lg-unto` builds pure review optics.
+~lg-unto~ builds pure review optics.
 
 * Conversion optics
 
 Notable prebuilt isos/prisms:
 
-- `lg-list->vector`
-- `lg-number-string`
-- `lg-char-string`
-- `lg-symbol-string`
-- `lg-alist-plist`
-- `lg-json-parse` and `lg-json-parse-with`
+- ~lg-list->vector~
+- ~lg-number-string~
+- ~lg-char-string~
+- ~lg-symbol-string~
+- ~lg-alist-plist~
+- ~lg-json-parse~ and ~lg-json-parse-with~
 
 #+begin_src emacs-lisp
 (lg-over (lg-compose lg-json-parse (lg-ix "name"))
@@ -163,13 +163,13 @@ Notable prebuilt isos/prisms:
 
 * Laws and caveats
 
-See `laws.org` for law expectations and explicit caveats.
+See ~laws.org~ for law expectations and explicit caveats.
 
 Key points:
 
 - standard iso/lens/prism/traversal laws are targeted,
 - indexed optics preserve focus behavior and order while exposing index metadata,
-- `lg-unmaybe` is documented as intentionally lossy.
+- ~lg-unmaybe~ is documented as intentionally lossy.
 
 * Testing
 

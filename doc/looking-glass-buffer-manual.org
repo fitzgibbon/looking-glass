@@ -9,7 +9,7 @@
 
 * Top
 
-`looking-glass-buffer` adds optics for live Emacs buffers and expresses mutations through the `looking-glass` effect system.
+~looking-glass-buffer~ adds optics for live Emacs buffers and expresses mutations through the ~looking-glass~ effect system.
 
 #+begin_src emacs-lisp
 (require 'looking-glass)
@@ -18,11 +18,11 @@
 
 * Available optics
 
-- `lg-buffer-point`: lens for point position.
-- `lg-buffer-mark`: lens for mark position.
-- `lg-buffer-string`: lens for whole-buffer text.
-- `lg-buffer-region-string`: affine traversal for active region text.
-- `lg-buffer-substring`: constructor for fixed start/end substring lens.
+- ~lg-buffer-point~: lens for point position.
+- ~lg-buffer-mark~: lens for mark position.
+- ~lg-buffer-string~: lens for whole-buffer text.
+- ~lg-buffer-region-string~: affine traversal for active region text.
+- ~lg-buffer-substring~: constructor for fixed start/end substring lens.
 
 * Basic usage
 
@@ -53,13 +53,13 @@ Region updates are optional, so they use affine semantics:
 
 * Effectful operations
 
-Buffer mutation operations are represented by effect operations and dispatched via `lg-effect-handle` methods.
+Buffer mutation operations are represented by effect operations and dispatched via ~lg-effect-handle~ methods.
 
 High-level helpers:
 
-- `lg-effect-view-of`, `lg-effect-preview-of`
-- `lg-effect-over-of`, `lg-effect-set-of`
-- `lg-view!`, `lg-preview!`, `lg-over!`, `lg-set!`
+- ~lg-effect-view-of~, ~lg-effect-preview-of~
+- ~lg-effect-over-of~, ~lg-effect-set-of~
+- ~lg-view!~, ~lg-preview!~, ~lg-over!~, ~lg-set!~
 
 #+begin_src emacs-lisp
 (with-temp-buffer
@@ -75,7 +75,7 @@ High-level helpers:
 
 * Sequencing with effect programs
 
-Use `lg-effect-bind` and `lg-effect-map` to sequence reads and updates.
+Use ~lg-effect-bind~ and ~lg-effect-map~ to sequence reads and updates.
 
 #+begin_src emacs-lisp
 (with-temp-buffer
@@ -101,13 +101,13 @@ Use `lg-effect-bind` and `lg-effect-map` to sequence reads and updates.
 
 When modeling workflows as state transitions, use:
 
-- `lg-state-view-of`, `lg-state-preview-of`
-- `lg-state-over-of`, `lg-state-set-of`
+- ~lg-state-view-of~, ~lg-state-preview-of~
+- ~lg-state-over-of~, ~lg-state-set-of~
 
 These helpers keep buffer updates in a composable state-program style instead of ad-hoc mutation.
 
 * Constraints and behavior
 
 - All operations require a live buffer.
-- `lg-buffer-region-string` only focuses when mark is active (`lg-nothing` otherwise).
+- ~lg-buffer-region-string~ only focuses when mark is active (~lg-nothing~ otherwise).
 - Setters return the same buffer object while mutating buffer state.
