@@ -47,26 +47,34 @@ Compositional profunctor optics for Emacs Lisp.
 #+begin_src emacs-lisp
 (require 'looking-glass)
 (require 'looking-glass-buffer)
+(require 'looking-glass-regex)
 
-(with-temp-buffer
-  (insert "hello world")
-  (goto-char 1)
-  (set-mark 6)
-  (let ((buffer (current-buffer)))
-    (lg-run-effect
-     (lg-effect-bind
-      (lg-effect-over-of lg-buffer-region-string #'upcase)
-      (cl-constantly
-       (lg-effect-set-of (lg-compose lg-buffer-string
-                                     (lg-regex-match "LL"))
-                         "11")))
-     buffer)
-    (buffer-string)))
-;; => "HE11O world"
+(let* ((upcase-hello
+        (lg-effect-over-of (lg-compose lg-buffer-string
+                                       (lg-regex-match "hello"))
+                           #'upcase))
+       (set-double-ell
+        (lg-effect-set-of (lg-compose lg-buffer-string
+                                      (lg-regex-match "LL" :case-fold nil))
+                          "11")))
+  (list
+   (with-temp-buffer
+     (insert "hello world")
+     (lg-run-effect (lg-effect-bind upcase-hello
+                                    (cl-constantly set-double-ell))
+                    (current-buffer))
+     (buffer-string))
+   (with-temp-buffer
+     (insert "hello world")
+     (lg-run-effect (lg-effect-bind set-double-ell
+                                    (cl-constantly upcase-hello))
+                    (current-buffer))
+     (buffer-string))))
+;; => ("HE11O world" "HELLO world")
 #+end_src
 
 #+RESULTS:
-: HE11O world
+: ("HE11O world" "HELLO world")
 
 * Package map
 

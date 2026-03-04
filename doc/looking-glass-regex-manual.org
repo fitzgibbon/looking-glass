@@ -18,10 +18,13 @@
 
 * Match optics
 
-- `lg-regex-match REGEXP`: affine traversal of the first full match.
-- `lg-regex-group REGEXP GROUP`: affine traversal of the first captured group.
-- `lg-regex-all REGEXP`: traversal over all non-overlapping full matches.
-- `lg-regex-all-groups REGEXP GROUP`: traversal over each match's capture group.
+- `lg-regex-match REGEXP &rest OPTIONS`: affine traversal of first full match.
+- `lg-regex-group REGEXP GROUP &rest OPTIONS`: affine traversal of first captured group.
+- `lg-regex-all REGEXP &rest OPTIONS`: traversal over all non-overlapping full matches.
+- `lg-regex-all-groups REGEXP GROUP &rest OPTIONS`: traversal over each match's capture group.
+
+Supported option keys are `:case-fold`, `:search-spaces-regexp`, `:search-whitespace-regexp`, and `:syntax-table`.
+By default regex optics bind `case-fold-search` to nil and use `standard-syntax-table` for deterministic matching.
 
 #+begin_src emacs-lisp
 (list
@@ -31,8 +34,9 @@
          "name=Ada age=10")
  (lg-over (lg-regex-all "[0-9]+")
           (lambda (s) (format "[%s]" s))
-          "a1 b22"))
-;; => ((lg-just . "42") "name=Grace age=10" "a[1] b[22]")
+          "a1 b22")
+ (lg-preview (lg-regex-match "LL" :case-fold nil) "hello"))
+;; => ((lg-just . "42") "name=Grace age=10" "a[1] b[22]" lg-nothing)
 #+end_src
 
 * Replacement helpers

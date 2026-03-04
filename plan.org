@@ -41,6 +41,15 @@
    - [X] Switch per-group rewrite to compose `lg-number-string` instead of direct `number-to-string`/`string-to-number`
 ** DONE Validate documentation change
    - [X] Run test suite to confirm docs/examples remain aligned
+* DONE Make regex optics deterministic via constructor options
+** DONE Add regex optic option handling in implementation
+   - [X] Add explicit options for case-folding, whitespace search vars, and syntax table
+   - [X] Default to standard syntax table when no option is provided
+** DONE Cover options in tests and docs
+   - [X] Add tests proving case-fold behavior is controlled by optic options
+   - [X] Update docs/examples to show deterministic option usage
+** DONE Validate changes
+   - [X] Run full test suite
 * TODO Generic optics for navigating, reading and editing buffers based on syntax and major mode
 ** TODO define generic interface for syntax optics
 ** TODO tree-sitter major mode implementation of the generic interface

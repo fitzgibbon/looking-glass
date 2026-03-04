@@ -36,6 +36,23 @@
   (should (equal (lg-regex-replace-group "name=\\([A-Za-z]+\\)" 1 #'upcase "name=Ada name=grace")
                  "name=ADA name=GRACE")))
 
+(ert-deftest lg-regex-options-control-case-folding ()
+  (let ((case-fold-search t))
+    (should (equal (lg-preview (lg-regex-match "LL") "hello") lg-nothing))
+    (should (equal (lg-preview (lg-regex-match "LL" :case-fold t) "hello")
+                   (lg-just "ll")))))
+
+(ert-deftest lg-regex-options-default-standard-syntax-table ()
+  (let ((custom (make-syntax-table)))
+    (modify-syntax-entry ?a "." custom)
+    (modify-syntax-entry ?b "." custom)
+    (modify-syntax-entry ?c "." custom)
+    (with-syntax-table custom
+      (should (equal (lg-preview (lg-regex-match "\\sw+") "abc")
+                     (lg-just "abc"))))
+    (should (equal (lg-preview (lg-regex-match "\\sw+" :syntax-table custom) "abc")
+                   lg-nothing))))
+
 (ert-deftest lg-worded-and-worded-regexp ()
   (should (equal (lg-to-list-of lg-worded "Ada Lovelace 1843")
                  '("Ada" "Lovelace" "1843")))
