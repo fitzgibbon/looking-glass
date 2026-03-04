@@ -495,385 +495,155 @@ For mutable sources this performs in-place mutation and returns SOURCE."
 For mutable sources this performs in-place mutation and returns SOURCE."
   (lg-run-effect (lg-effect-set-of optic value) source))
 
-(defun lg--effect-source-call (fn &rest args)
-  "Return an effect program that applies FN to ARGS and context."
-  (make-lg-effect :run (lambda (context)
-                         (apply fn (append args (list context))))))
-
 (defun lg--effect-pure-call (fn &rest args)
   "Return an effect program that applies pure FN to ARGS."
   (make-lg-effect :run (lambda (_context)
                          (apply fn args))))
 
-(defun lg-effect-iview-of (optic)
-  "Return an effectful indexed view operation for OPTIC."
-  (lg--effect-source-call #'lg-iview optic))
-
-(defun lg-effect-ipreview-of (optic)
-  "Return an effectful indexed preview operation for OPTIC."
-  (lg--effect-source-call #'lg-ipreview optic))
-
-(defun lg-effect-has-of (optic)
-  "Return an effectful has operation for OPTIC."
-  (lg--effect-source-call #'lg-has optic))
-
-(defun lg-effect-ihas-of (optic)
-  "Return an effectful indexed has operation for OPTIC."
-  (lg--effect-source-call #'lg-ihas optic))
-
-(defun lg-effect-view-non-nil-of (optic)
-  "Return an effectful non-nil view operation for OPTIC."
-  (lg--effect-source-call #'lg-view-non-nil optic))
-
-(defun lg-effect-iview-non-nil-of (optic)
-  "Return an effectful indexed non-nil view operation for OPTIC."
-  (lg--effect-source-call #'lg-iview-non-nil optic))
-
-(defun lg-effect-map-of (optic fn)
-  "Return an effectful map operation applying FN over OPTIC."
-  (lg-effect-over-of optic fn))
-
-(defun lg-effect-for-of (optic fn)
-  "Return an effectful map operation with source-first pure counterpart."
-  (make-lg-effect :run (lambda (context)
-                         (lg-for-of optic context fn))))
-
-(defun lg-effect-iover-of (optic fn)
-  "Return an effectful indexed map operation for OPTIC and FN."
-  (lg--effect-source-call #'lg-iover optic fn))
-
-(defun lg-effect-imap-of (optic fn)
-  "Return an effectful indexed map operation for OPTIC and FN."
-  (lg--effect-source-call #'lg-imap-of optic fn))
-
-(defun lg-effect-ifor-of (optic fn)
-  "Return an effectful indexed map operation with source-first pure counterpart."
-  (make-lg-effect :run (lambda (context)
-                         (lg-ifor-of optic context fn))))
-
-(defun lg-effect-iset-of (optic value)
-  "Return an effectful indexed set operation for OPTIC and VALUE."
-  (lg--effect-source-call #'lg-iset optic value))
-
-(defun lg-effect-foldl-of (optic fn initial)
-  "Return an effectful left-fold operation for OPTIC."
-  (lg--effect-source-call #'lg-foldl-of optic fn initial))
-
-(defun lg-effect-foldr-of (optic fn initial)
-  "Return an effectful right-fold operation for OPTIC."
-  (lg--effect-source-call #'lg-foldr-of optic fn initial))
-
-(defun lg-effect-first-of (optic)
-  "Return an effectful first-focus operation for OPTIC."
-  (lg--effect-source-call #'lg-first-of optic))
-
-(defun lg-effect-last-of (optic)
-  "Return an effectful last-focus operation for OPTIC."
-  (lg--effect-source-call #'lg-last-of optic))
-
-(defun lg-effect-find-of (optic predicate)
-  "Return an effectful find operation for OPTIC and PREDICATE."
-  (lg--effect-source-call #'lg-find-of optic predicate))
-
-(defun lg-effect-ifoldl-of (optic fn initial)
-  "Return an effectful indexed left-fold operation for OPTIC."
-  (lg--effect-source-call #'lg-ifoldl-of optic fn initial))
-
-(defun lg-effect-ifoldr-of (optic fn initial)
-  "Return an effectful indexed right-fold operation for OPTIC."
-  (lg--effect-source-call #'lg-ifoldr-of optic fn initial))
-
-(defun lg-effect-ifirst-of (optic)
-  "Return an effectful indexed first-focus operation for OPTIC."
-  (lg--effect-source-call #'lg-ifirst-of optic))
-
-(defun lg-effect-ilast-of (optic)
-  "Return an effectful indexed last-focus operation for OPTIC."
-  (lg--effect-source-call #'lg-ilast-of optic))
-
-(defun lg-effect-ifind-of (optic predicate)
-  "Return an effectful indexed find operation for OPTIC and PREDICATE."
-  (lg--effect-source-call #'lg-ifind-of optic predicate))
-
-(defun lg-effect-fold-map-of (optic monoid fn)
-  "Return an effectful fold-map operation for OPTIC."
-  (lg--effect-source-call #'lg-fold-map-of optic monoid fn))
-
-(defun lg-effect-ifold-map-of (optic monoid fn)
-  "Return an effectful indexed fold-map operation for OPTIC."
-  (lg--effect-source-call #'lg-ifold-map-of optic monoid fn))
-
-(defun lg-effect-any-of (optic predicate)
-  "Return an effectful any predicate operation for OPTIC."
-  (lg--effect-source-call #'lg-any-of optic predicate))
-
-(defun lg-effect-none-of (optic predicate)
-  "Return an effectful none predicate operation for OPTIC."
-  (lg--effect-source-call #'lg-none-of optic predicate))
-
-(defun lg-effect-all-of (optic predicate)
-  "Return an effectful all predicate operation for OPTIC."
-  (lg--effect-source-call #'lg-all-of optic predicate))
-
-(defun lg-effect-iany-of (optic predicate)
-  "Return an effectful indexed any predicate operation for OPTIC."
-  (lg--effect-source-call #'lg-iany-of optic predicate))
-
-(defun lg-effect-inone-of (optic predicate)
-  "Return an effectful indexed none predicate operation for OPTIC."
-  (lg--effect-source-call #'lg-inone-of optic predicate))
-
-(defun lg-effect-iall-of (optic predicate)
-  "Return an effectful indexed all predicate operation for OPTIC."
-  (lg--effect-source-call #'lg-iall-of optic predicate))
-
-(defun lg-effect-length-of (optic)
-  "Return an effectful focus count operation for OPTIC."
-  (lg--effect-source-call #'lg-length-of optic))
-
-(defun lg-effect-ilength-of (optic)
-  "Return an effectful indexed focus count operation for OPTIC."
-  (lg--effect-source-call #'lg-ilength-of optic))
-
-(defun lg-effect-sum-of (optic)
-  "Return an effectful numeric sum operation for OPTIC."
-  (lg--effect-source-call #'lg-sum-of optic))
-
-(defun lg-effect-product-of (optic)
-  "Return an effectful numeric product operation for OPTIC."
-  (lg--effect-source-call #'lg-product-of optic))
-
-(defun lg-effect-isum-of (optic)
-  "Return an effectful indexed numeric sum operation for OPTIC."
-  (lg--effect-source-call #'lg-isum-of optic))
-
-(defun lg-effect-iproduct-of (optic)
-  "Return an effectful indexed numeric product operation for OPTIC."
-  (lg--effect-source-call #'lg-iproduct-of optic))
-
-(defun lg-effect-maximum-of (optic)
-  "Return an effectful maximum operation for OPTIC."
-  (lg--effect-source-call #'lg-maximum-of optic))
-
-(defun lg-effect-minimum-of (optic)
-  "Return an effectful minimum operation for OPTIC."
-  (lg--effect-source-call #'lg-minimum-of optic))
-
-(defun lg-effect-imaximum-of (optic)
-  "Return an effectful indexed maximum operation for OPTIC."
-  (lg--effect-source-call #'lg-imaximum-of optic))
-
-(defun lg-effect-iminimum-of (optic)
-  "Return an effectful indexed minimum operation for OPTIC."
-  (lg--effect-source-call #'lg-iminimum-of optic))
-
-(defun lg-effect-preview-or-of (default optic)
-  "Return an effectful preview-or operation for OPTIC."
-  (lg--effect-source-call #'lg-preview-or default optic))
-
-(defun lg-effect-ipreview-or-of (default optic)
-  "Return an effectful indexed preview-or operation for OPTIC."
-  (lg--effect-source-call #'lg-ipreview-or default optic))
-
-(defun lg-effect-to-list-of (optic)
-  "Return an effectful focus collection operation for OPTIC."
-  (lg--effect-source-call #'lg-to-list-of optic))
-
-(defun lg-effect-ito-list-of (optic)
-  "Return an effectful indexed focus collection operation for OPTIC."
-  (lg--effect-source-call #'lg-ito-list-of optic))
-
-(defun lg-effect-review-of (optic value)
-  "Return an effectful review operation for OPTIC and VALUE."
-  (lg--effect-pure-call #'lg-review optic value))
-
-(defun lg-effect-reviews-of (optic fn value)
-  "Return an effectful reviews operation for OPTIC, FN, and VALUE."
-  (lg--effect-pure-call #'lg-reviews optic fn value))
-
-(defun lg-iview! (optic source)
-  "View indexed focus for OPTIC in SOURCE."
-  (lg-run-effect (lg-effect-iview-of optic) source))
-
-(defun lg-ipreview! (optic source)
-  "Preview indexed focus for OPTIC in SOURCE."
-  (lg-run-effect (lg-effect-ipreview-of optic) source))
-
-(defun lg-has! (optic source)
-  "Return non-nil when OPTIC has at least one focus in SOURCE."
-  (lg-run-effect (lg-effect-has-of optic) source))
-
-(defun lg-ihas! (optic source)
-  "Return non-nil when indexed OPTIC has at least one focus in SOURCE."
-  (lg-run-effect (lg-effect-ihas-of optic) source))
-
-(defun lg-view-non-nil! (optic source)
-  "View focus for OPTIC in SOURCE and require a non-nil result."
-  (lg-run-effect (lg-effect-view-non-nil-of optic) source))
-
-(defun lg-iview-non-nil! (optic source)
-  "View indexed focus for OPTIC in SOURCE and require non-nil value."
-  (lg-run-effect (lg-effect-iview-non-nil-of optic) source))
-
-(defun lg-map-of! (optic fn source)
-  "Map FN over OPTIC focus in SOURCE."
-  (lg-run-effect (lg-effect-map-of optic fn) source))
-
-(defun lg-for-of! (optic source fn)
-  "Map FN over OPTIC focus in SOURCE with source-first argument order."
-  (lg-run-effect (lg-effect-for-of optic fn) source))
-
-(defun lg-iover! (optic fn source)
-  "Apply indexed FN over OPTIC focus in SOURCE."
-  (lg-run-effect (lg-effect-iover-of optic fn) source))
-
-(defun lg-imap-of! (optic fn source)
-  "Indexed map over OPTIC in SOURCE using FN."
-  (lg-run-effect (lg-effect-imap-of optic fn) source))
-
-(defun lg-ifor-of! (optic source fn)
-  "Indexed map over OPTIC in SOURCE with source-first order."
-  (lg-run-effect (lg-effect-ifor-of optic fn) source))
-
-(defun lg-iset! (optic value source)
-  "Set indexed OPTIC focus to VALUE in SOURCE, ignoring indices."
-  (lg-run-effect (lg-effect-iset-of optic value) source))
-
-(defun lg-foldl-of! (optic fn initial source)
-  "Left-fold OPTIC focuses in SOURCE with FN and INITIAL."
-  (lg-run-effect (lg-effect-foldl-of optic fn initial) source))
-
-(defun lg-foldr-of! (optic fn initial source)
-  "Right-fold OPTIC focuses in SOURCE with FN and INITIAL."
-  (lg-run-effect (lg-effect-foldr-of optic fn initial) source))
-
-(defun lg-first-of! (optic source)
-  "Return first focus of OPTIC in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-first-of optic) source))
-
-(defun lg-last-of! (optic source)
-  "Return last focus of OPTIC in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-last-of optic) source))
-
-(defun lg-find-of! (optic predicate source)
-  "Return first focus matching PREDICATE for OPTIC in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-find-of optic predicate) source))
-
-(defun lg-ifoldl-of! (optic fn initial source)
-  "Left-fold indexed OPTIC focuses in SOURCE with FN and INITIAL."
-  (lg-run-effect (lg-effect-ifoldl-of optic fn initial) source))
-
-(defun lg-ifoldr-of! (optic fn initial source)
-  "Right-fold indexed OPTIC focuses in SOURCE with FN and INITIAL."
-  (lg-run-effect (lg-effect-ifoldr-of optic fn initial) source))
-
-(defun lg-ifirst-of! (optic source)
-  "Return first indexed focus of OPTIC in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-ifirst-of optic) source))
-
-(defun lg-ilast-of! (optic source)
-  "Return last indexed focus of OPTIC in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-ilast-of optic) source))
-
-(defun lg-ifind-of! (optic predicate source)
-  "Return first indexed focus matching PREDICATE as tagged maybe."
-  (lg-run-effect (lg-effect-ifind-of optic predicate) source))
-
-(defun lg-fold-map-of! (optic monoid fn source)
-  "Map each OPTIC focus with FN and combine using MONOID in SOURCE."
-  (lg-run-effect (lg-effect-fold-map-of optic monoid fn) source))
-
-(defun lg-ifold-map-of! (optic monoid fn source)
-  "Indexed fold-map over OPTIC in SOURCE using MONOID."
-  (lg-run-effect (lg-effect-ifold-map-of optic monoid fn) source))
-
-(defun lg-any-of! (optic predicate source)
-  "Return non-nil when any OPTIC focus in SOURCE satisfies PREDICATE."
-  (lg-run-effect (lg-effect-any-of optic predicate) source))
-
-(defun lg-none-of! (optic predicate source)
-  "Return non-nil when no OPTIC focus in SOURCE satisfies PREDICATE."
-  (lg-run-effect (lg-effect-none-of optic predicate) source))
-
-(defun lg-all-of! (optic predicate source)
-  "Return non-nil when all OPTIC focuses in SOURCE satisfy PREDICATE."
-  (lg-run-effect (lg-effect-all-of optic predicate) source))
-
-(defun lg-iany-of! (optic predicate source)
-  "Return non-nil when any indexed focus satisfies PREDICATE."
-  (lg-run-effect (lg-effect-iany-of optic predicate) source))
-
-(defun lg-inone-of! (optic predicate source)
-  "Return non-nil when no indexed focus satisfies PREDICATE."
-  (lg-run-effect (lg-effect-inone-of optic predicate) source))
-
-(defun lg-iall-of! (optic predicate source)
-  "Return non-nil when all indexed focuses satisfy PREDICATE."
-  (lg-run-effect (lg-effect-iall-of optic predicate) source))
-
-(defun lg-length-of! (optic source)
-  "Return focus count of OPTIC in SOURCE."
-  (lg-run-effect (lg-effect-length-of optic) source))
-
-(defun lg-ilength-of! (optic source)
-  "Return indexed focus count of OPTIC in SOURCE."
-  (lg-run-effect (lg-effect-ilength-of optic) source))
-
-(defun lg-sum-of! (optic source)
-  "Return numeric sum of OPTIC focuses in SOURCE."
-  (lg-run-effect (lg-effect-sum-of optic) source))
-
-(defun lg-product-of! (optic source)
-  "Return numeric product of OPTIC focuses in SOURCE."
-  (lg-run-effect (lg-effect-product-of optic) source))
-
-(defun lg-isum-of! (optic source)
-  "Return numeric sum of indexed OPTIC focuses in SOURCE."
-  (lg-run-effect (lg-effect-isum-of optic) source))
-
-(defun lg-iproduct-of! (optic source)
-  "Return numeric product of indexed OPTIC focuses in SOURCE."
-  (lg-run-effect (lg-effect-iproduct-of optic) source))
-
-(defun lg-maximum-of! (optic source)
-  "Return maximum OPTIC focus in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-maximum-of optic) source))
-
-(defun lg-minimum-of! (optic source)
-  "Return minimum OPTIC focus in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-minimum-of optic) source))
-
-(defun lg-imaximum-of! (optic source)
-  "Return indexed maximum OPTIC focus in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-imaximum-of optic) source))
-
-(defun lg-iminimum-of! (optic source)
-  "Return indexed minimum OPTIC focus in SOURCE as tagged maybe."
-  (lg-run-effect (lg-effect-iminimum-of optic) source))
-
-(defun lg-preview-or! (default optic source)
-  "Preview OPTIC in SOURCE, returning DEFAULT only when missing."
-  (lg-run-effect (lg-effect-preview-or-of default optic) source))
-
-(defun lg-ipreview-or! (default optic source)
-  "Preview indexed OPTIC in SOURCE, returning DEFAULT only when missing."
-  (lg-run-effect (lg-effect-ipreview-or-of default optic) source))
-
-(defun lg-to-list-of! (optic source)
-  "Collect all focus values for OPTIC in SOURCE."
-  (lg-run-effect (lg-effect-to-list-of optic) source))
-
-(defun lg-ito-list-of! (optic source)
-  "Collect all indexed focus values for OPTIC in SOURCE."
-  (lg-run-effect (lg-effect-ito-list-of optic) source))
-
-(defun lg-review! (optic value)
-  "Construct a target value from VALUE using OPTIC as a review."
-  (lg-run-effect (lg-effect-review-of optic value) nil))
-
-(defun lg-reviews! (optic fn value)
-  "Review VALUE through OPTIC, then apply FN to the result."
-  (lg-run-effect (lg-effect-reviews-of optic fn value) nil))
+(eval-and-compile
+  (defun lg--insert-at (list index value)
+    "Return LIST with VALUE inserted at 1-based INDEX."
+    (unless (and (integerp index) (>= index 1) (<= index (1+ (length list))))
+      (error "Insert index %s out of bounds for list length %s" index (length list)))
+    (let ((front nil)
+          (rest list)
+          (remaining (1- index)))
+      (while (> remaining 0)
+        (push (pop rest) front)
+        (setq remaining (1- remaining)))
+      (append (nreverse front) (list value) rest))))
+
+(eval-and-compile
+  (defun lg--effect-name-for-stem (stem)
+    "Return canonical effect wrapper symbol for STEM."
+    (let ((stem-name (format "%s" stem)))
+      (intern
+       (if (string-suffix-p "-of" stem-name)
+           (format "lg-effect-%s" stem-name)
+         (format "lg-effect-%s-of" stem-name))))))
+
+(eval-and-compile
+  (defun lg--doc-symbol (value)
+    "Return VALUE rendered for generated docstrings."
+    (if (symbolp value)
+        (upcase (symbol-name value))
+      (format "%s" value))))
+
+(eval-and-compile
+  (defun lg--doc-call (fn args)
+    "Return FN call form string for generated docstrings."
+    (format "`(%s%s)'"
+            fn
+            (if args
+                (format " %s"
+                        (mapconcat #'lg--doc-symbol args " "))
+              ""))))
+
+(defmacro lg-define-effect-source-wrapper (stem args &optional source-position)
+  "Define effect constructor and bang runner for source-based operation STEM.
+ARGS are the pure function arguments excluding source context.
+SOURCE-POSITION is the 1-based source argument position in the pure function."
+  (let* ((pure-name (intern (format "lg-%s" stem)))
+         (effect-name (lg--effect-name-for-stem stem))
+         (bang-name (intern (format "lg-%s!" stem)))
+         (source-pos (or source-position (1+ (length args))))
+         (effect-call-args (lg--insert-at args source-pos 'context))
+         (bang-args (lg--insert-at args source-pos 'source))
+         (pure-call-doc (lg--doc-call pure-name bang-args)))
+    `(progn
+       (defun ,effect-name ,args
+         ,(format "Return an effect program for `%s'.\nWhen run, evaluates %s."
+                  pure-name
+                  pure-call-doc)
+         (make-lg-effect :run (lambda (context)
+                                (,pure-name ,@effect-call-args))))
+       (defun ,bang-name ,bang-args
+         ,(format "Run `%s' immediately on SOURCE.\nEquivalent to %s."
+                  pure-name
+                  pure-call-doc)
+         (lg-run-effect (,effect-name ,@args) source)))))
+
+(defmacro lg-define-effect-pure-wrapper (stem args)
+  "Define effect constructor and bang runner for pure operation STEM.
+ARGS are the pure function arguments."
+  (let* ((pure-name (intern (format "lg-%s" stem)))
+         (effect-name (lg--effect-name-for-stem stem))
+         (bang-name (intern (format "lg-%s!" stem)))
+         (pure-call-doc (lg--doc-call pure-name args)))
+    `(progn
+       (defun ,effect-name ,args
+         ,(format "Return an effect program for `%s'.\nWhen run, evaluates %s (context is ignored)."
+                  pure-name
+                  pure-call-doc)
+         (lg--effect-pure-call #',pure-name ,@args))
+       (defun ,bang-name ,args
+         ,(format "Run `%s' immediately.\nEquivalent to %s."
+                  pure-name
+                  pure-call-doc)
+         (lg-run-effect (,effect-name ,@args) nil)))))
+
+(defmacro lg-define-effect-source-wrappers (&rest specs)
+  "Define multiple source-based wrappers.
+Each SPEC is (STEM ARGS) or (STEM ARGS SOURCE-POSITION)."
+  `(progn
+     ,@(mapcar
+        (lambda (spec)
+          (let ((stem (nth 0 spec))
+                (args (nth 1 spec))
+                (source-pos (nth 2 spec)))
+            (if source-pos
+                `(lg-define-effect-source-wrapper ,stem ,args ,source-pos)
+              `(lg-define-effect-source-wrapper ,stem ,args))))
+        specs)))
+
+(lg-define-effect-source-wrappers
+ (iview (optic))
+ (ipreview (optic))
+ (has (optic))
+ (ihas (optic))
+ (view-non-nil (optic))
+ (iview-non-nil (optic))
+ (map-of (optic fn))
+ (for-of (optic fn) 2)
+ (iover (optic fn))
+ (imap-of (optic fn))
+ (ifor-of (optic fn) 2)
+ (iset (optic value))
+ (foldl-of (optic fn initial))
+ (foldr-of (optic fn initial))
+ (first-of (optic))
+ (last-of (optic))
+ (find-of (optic predicate))
+ (ifoldl-of (optic fn initial))
+ (ifoldr-of (optic fn initial))
+ (ifirst-of (optic))
+ (ilast-of (optic))
+ (ifind-of (optic predicate))
+ (fold-map-of (optic monoid fn))
+ (ifold-map-of (optic monoid fn))
+ (any-of (optic predicate))
+ (none-of (optic predicate))
+ (all-of (optic predicate))
+ (iany-of (optic predicate))
+ (inone-of (optic predicate))
+ (iall-of (optic predicate))
+ (length-of (optic))
+ (ilength-of (optic))
+ (sum-of (optic))
+ (product-of (optic))
+ (isum-of (optic))
+ (iproduct-of (optic))
+ (maximum-of (optic))
+ (minimum-of (optic))
+ (imaximum-of (optic))
+ (iminimum-of (optic))
+ (preview-or (default optic))
+ (ipreview-or (default optic))
+ (to-list-of (optic))
+ (ito-list-of (optic)))
+
+(lg-define-effect-pure-wrapper review (optic value))
+(lg-define-effect-pure-wrapper reviews (optic fn value))
 
 (defconst lg-monoid-list
   (make-lg-monoid :empty nil :append #'append)
