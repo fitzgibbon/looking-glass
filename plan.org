@@ -35,7 +35,12 @@
    - [X] Add a dedicated test job in release dry-run workflow
    - [X] Make release dry-run job depend on successful tests
 ** DONE Validate CI changes locally
-   - [X] Run full test suite after workflow updates
+    - [X] Run full test suite after workflow updates
+* DONE Update capture-group rewrite docs to use number-string lens
+** DONE Replace README capture group example transform
+   - [X] Switch per-group rewrite to compose `lg-number-string` instead of direct `number-to-string`/`string-to-number`
+** DONE Validate documentation change
+   - [X] Run test suite to confirm docs/examples remain aligned
 * TODO Generic optics for navigating, reading and editing buffers based on syntax and major mode
 ** TODO define generic interface for syntax optics
 ** TODO tree-sitter major mode implementation of the generic interface
