@@ -76,6 +76,34 @@ Compositional profunctor optics for Emacs Lisp.
 #+RESULTS:
 : ("HE11O world" "HELLO world")
 
+** Immediate mutation when you do not need effect composition
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-buffer)
+(require 'looking-glass-regex)
+
+(with-temp-buffer
+  (insert "hello world")
+  (goto-char 1)
+  (set-mark 6)
+  (lg-over! lg-buffer-region-string #'upcase (current-buffer))
+  (lg-set! (lg-compose lg-buffer-string
+                       (lg-regex-all "E" :case-fold nil))
+           "3"
+           (current-buffer))
+  (lg-set! (lg-compose lg-buffer-string
+                       (lg-regex-all "o"))
+           "0"
+           (current-buffer))
+  (lg-view! lg-buffer-string (current-buffer)))
+;; => "H3LL0 world"
+#+end_src
+
+#+RESULTS:
+: H3LLO w0rld
+
+
 * Package map
 
 - `looking-glass.el`: optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
