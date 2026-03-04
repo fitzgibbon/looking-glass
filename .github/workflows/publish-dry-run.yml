@@ -1,0 +1,80 @@
+name: publish-dry-run
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Target branch for MELPA-ready manuals"
+        required: false
+        default: "melpa-release"
+      tag_name:
+        description: "Tag name for release dry-run"
+        required: false
+        default: "v0.0.0-dry-run"
+
+jobs:
+  test-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Emacs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y emacs-nox
+
+      - name: Run test suite
+        run: |
+          emacs -Q --batch -L . -L test \
+            -l test/looking-glass-test.el \
+            -f ert-run-tests-batch-and-exit
+
+  dry-run-publish:
+    needs: test-suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Emacs and Texinfo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y emacs-nox texinfo
+
+      - name: Build manuals from org
+        run: |
+          scripts/build-manuals.sh
+
+      - name: MELPA publish dry-run
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+        run: |
+          scripts/dry-run-publish-melpa.sh
+
+      - name: GitHub release dry-run
+        env:
+          TAG_NAME: ${{ github.event.inputs.tag_name }}
+        run: |
+          scripts/dry-run-publish-release.sh
+
+      - name: Upload dry-run manuals artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-manuals
+          path: build/manuals/info
+
+      - name: Write dry-run summary
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+          TAG_NAME: ${{ github.event.inputs.tag_name }}
+        run: |
+          {
+            echo "## Publish dry-run results"
+            echo ""
+            echo "- Would publish generated .info files + dir to branch \`${TARGET_BRANCH}\`."
+            echo "- Would create release archive for tag \`${TAG_NAME}\`."
+            echo "- No pushes or releases were executed by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"

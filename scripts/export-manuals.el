@@ -1,0 +1,21 @@
+;;; export-manuals.el --- Export org manuals to Texinfo -*- lexical-binding: t; -*-
+
+(require 'org)
+(require 'ox-texinfo)
+
+(let* ((raw-args command-line-args-left)
+       (args (if (and raw-args (string= (car raw-args) "--"))
+                 (cdr raw-args)
+               raw-args))
+       (out-dir (expand-file-name (or (car args) "build/manuals/texi")))
+       (manuals '(("doc/looking-glass-manual.org" . "looking-glass.texi")
+                  ("doc/looking-glass-buffer-manual.org" . "looking-glass-buffer.texi")
+                  ("doc/looking-glass-regex-manual.org" . "looking-glass-regex.texi"))))
+  (setq command-line-args-left nil)
+  (make-directory out-dir t)
+  (dolist (manual manuals)
+    (let ((source (expand-file-name (car manual)))
+          (target (expand-file-name (cdr manual) out-dir)))
+      (with-current-buffer (find-file-noselect source)
+        (org-export-to-file 'texinfo target nil nil nil nil nil))
+      (princ (format "Exported %s -> %s\n" source target)))))

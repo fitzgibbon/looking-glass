@@ -1,0 +1,113 @@
+#+TITLE: looking-glass-buffer Manual
+#+SUBTITLE: Buffer optics and effectful editing
+#+AUTHOR: looking-glass contributors
+#+TEXINFO_FILENAME: looking-glass-buffer.info
+#+TEXINFO_DIR_CATEGORY: Emacs
+#+TEXINFO_DIR_TITLE: looking-glass-buffer: (looking-glass-buffer). Buffer optics.
+#+TEXINFO_DIR_DESC: Optics for point, mark, region, and text updates in buffers.
+#+OPTIONS: toc:2 num:t
+
+* Top
+
+`looking-glass-buffer` adds optics for live Emacs buffers and expresses mutations through the `looking-glass` effect system.
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-buffer)
+#+end_src
+
+* Available optics
+
+- `lg-buffer-point`: lens for point position.
+- `lg-buffer-mark`: lens for mark position.
+- `lg-buffer-string`: lens for whole-buffer text.
+- `lg-buffer-region-string`: affine traversal for active region text.
+- `lg-buffer-substring`: constructor for fixed start/end substring lens.
+
+* Basic usage
+
+#+begin_src emacs-lisp
+(with-temp-buffer
+  (insert "hello world")
+  (let ((buffer (current-buffer)))
+    (list
+     (lg-view lg-buffer-point buffer)
+     (progn (lg-set lg-buffer-point 1 buffer) (point))
+     (progn (lg-set lg-buffer-string "updated" buffer) (buffer-string)))))
+;; => (12 1 "updated")
+#+end_src
+
+Region updates are optional, so they use affine semantics:
+
+#+begin_src emacs-lisp
+(with-temp-buffer
+  (insert "alpha beta")
+  (goto-char 1)
+  (set-mark 6)
+  (let ((buffer (current-buffer)))
+    (list (lg-preview lg-buffer-region-string buffer)
+          (progn (lg-set lg-buffer-region-string "ALPHA" buffer)
+                 (buffer-string)))))
+;; => ((lg-just . "alpha") "ALPHA beta")
+#+end_src
+
+* Effectful operations
+
+Buffer mutation operations are represented by effect operations and dispatched via `lg-effect-handle` methods.
+
+High-level helpers:
+
+- `lg-effect-view-of`, `lg-effect-preview-of`
+- `lg-effect-over-of`, `lg-effect-set-of`
+- `lg-view!`, `lg-preview!`, `lg-over!`, `lg-set!`
+
+#+begin_src emacs-lisp
+(with-temp-buffer
+  (insert "alpha beta")
+  (goto-char 1)
+  (set-mark 6)
+  (let ((buffer (current-buffer)))
+    (lg-over! lg-buffer-region-string #'upcase buffer)
+    (lg-set! lg-buffer-point 3 buffer)
+    (list (buffer-string) (point))))
+;; => ("ALPHA beta" 3)
+#+end_src
+
+* Sequencing with effect programs
+
+Use `lg-effect-bind` and `lg-effect-map` to sequence reads and updates.
+
+#+begin_src emacs-lisp
+(with-temp-buffer
+  (insert "hello world")
+  (goto-char 1)
+  (set-mark 6)
+  (let* ((buffer (current-buffer))
+         (program
+          (lg-effect-bind
+           (lg-effect-view-of lg-buffer-string)
+           (lambda (before)
+             (lg-effect-bind
+              (lg-effect-over-of lg-buffer-region-string #'upcase)
+              (lambda (_)
+                (lg-effect-map
+                 (lambda (after) (cons before after))
+                 (lg-effect-view-of lg-buffer-string))))))))
+    (lg-run-effect program buffer)))
+;; => ("hello world" . "HELLO world")
+#+end_src
+
+* State helpers
+
+When modeling workflows as state transitions, use:
+
+- `lg-state-view-of`, `lg-state-preview-of`
+- `lg-state-over-of`, `lg-state-set-of`
+
+These helpers keep buffer updates in a composable state-program style instead of ad-hoc mutation.
+
+* Constraints and behavior
+
+- All operations require a live buffer.
+- `lg-buffer-region-string` only focuses when mark is active (`lg-nothing` otherwise).
+- Setters return the same buffer object while mutating buffer state.

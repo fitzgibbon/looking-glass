@@ -1,0 +1,88 @@
+#+TITLE: looking-glass-regex Manual
+#+SUBTITLE: Regex and text optics
+#+AUTHOR: looking-glass contributors
+#+TEXINFO_FILENAME: looking-glass-regex.info
+#+TEXINFO_DIR_CATEGORY: Emacs
+#+TEXINFO_DIR_TITLE: looking-glass-regex: (looking-glass-regex). Regex optics.
+#+TEXINFO_DIR_DESC: Traversals and prisms over regex matches and text encodings.
+#+OPTIONS: toc:2 num:t
+
+* Top
+
+`looking-glass-regex` provides optics for regex-focused editing and text transformations.
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-regex)
+#+end_src
+
+* Match optics
+
+- `lg-regex-match REGEXP`: affine traversal of the first full match.
+- `lg-regex-group REGEXP GROUP`: affine traversal of the first captured group.
+- `lg-regex-all REGEXP`: traversal over all non-overlapping full matches.
+- `lg-regex-all-groups REGEXP GROUP`: traversal over each match's capture group.
+
+#+begin_src emacs-lisp
+(list
+ (lg-preview (lg-regex-match "[0-9]+") "id=42, next=99")
+ (lg-set (lg-regex-group "name=\\([A-Za-z]+\\)" 1)
+         "Grace"
+         "name=Ada age=10")
+ (lg-over (lg-regex-all "[0-9]+")
+          (lambda (s) (format "[%s]" s))
+          "a1 b22"))
+;; => ((lg-just . "42") "name=Grace age=10" "a[1] b[22]")
+#+end_src
+
+* Replacement helpers
+
+- `lg-regex-replace`: replace all full matches using a function.
+- `lg-regex-replace-group`: replace all captured group matches using a function.
+
+#+begin_src emacs-lisp
+(list
+ (lg-regex-replace "[0-9]+" (lambda (_m) "N") "a1 b22")
+ (lg-regex-replace-group "name=\\([A-Za-z]+\\)" 1 #'upcase "name=Ada name=grace"))
+;; => ("aN bN" "name=ADA name=GRACE")
+#+end_src
+
+* Word and line traversals
+
+- `lg-worded`: traversal over `\\w+` segments.
+- `lg-worded-regexp`: configurable word-like traversal.
+- `lg-lined`: traversal over line content that preserves original line separators.
+
+`lg-lined` supports mixed separators (`\n`, `\r\n`, `\r`, vertical tab, form feed, NEL, U+2028, U+2029) while keeping separators unchanged during updates.
+
+#+begin_src emacs-lisp
+(let ((source (concat "alpha" "\r\n" "beta" "\u2028" "gamma" "\n")))
+  (lg-over lg-lined #'upcase source))
+;; => "ALPHA\r\nBETA\u2028GAMMA\n"
+#+end_src
+
+* UTF-8 prism
+
+`lg-utf8` is a prism between unibyte UTF-8 byte strings and decoded multibyte text.
+
+- Preview succeeds only for valid UTF-8 bytes that roundtrip.
+- Review encodes text to UTF-8 bytes.
+
+#+begin_src emacs-lisp
+(let* ((text "snowman \u2603")
+       (bytes (lg-review lg-utf8 text)))
+  (list (multibyte-string-p bytes)
+        (lg-preview lg-utf8 bytes)))
+;; => (nil (lg-just . "snowman \u2603"))
+#+end_src
+
+* Composition patterns
+
+Regex optics compose naturally with core optics:
+
+#+begin_src emacs-lisp
+(lg-over (lg-compose lg-utf8 (lg-regex-all "[A-Za-z]+"))
+         #'upcase
+         (encode-coding-string "alpha beta" 'utf-8 t))
+;; => UTF-8 bytes for "ALPHA BETA"
+#+end_src

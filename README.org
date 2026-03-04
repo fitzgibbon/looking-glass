@@ -1,0 +1,97 @@
+#+TITLE: looking-glass
+
+Compositional profunctor optics for Emacs Lisp.
+
+`looking-glass` gives you one language for reading, transforming, and reviewing data across lists, vectors, plists/alists/hash tables, strings, JSON text, buffers, and regex matches.
+
+* Why it is useful
+
+- Express nested edits once, then reuse safely.
+- Keep nil semantics explicit with tagged maybe values (`lg-nothing` vs `(lg-just . nil)`).
+- Use the same combinators for pure data and effectful buffer updates.
+
+* Quick examples
+
+** Promote names inside JSON text (no parser boilerplate)
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+
+(let ((json "{\"user\":{\"name\":\"Ada\"},\"active\":true}"))
+  (lg-over (lg-compose lg-json-parse
+                       (lg-ix "user")
+                       (lg-ix "name"))
+           #'upcase
+           json))
+;; => "{\"user\":{\"name\":\"ADA\"},\"active\":true}"
+#+end_src
+
+** Bulk rewrite only capture groups
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-regex)
+
+(lg-over (lg-regex-all-groups "id=\\([0-9]+\\)" 1)
+         (lambda (s) (number-to-string (+ 100 (string-to-number s))))
+         "id=1 id=22 id=333")
+;; => "id=101 id=122 id=433"
+#+end_src
+
+** Effect-safe buffer edits in one program
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-buffer)
+
+(with-temp-buffer
+  (insert "hello world")
+  (goto-char 1)
+  (set-mark 6)
+  (lg-run-effect
+   (lg-effect-bind
+    (lg-effect-over-of lg-buffer-region-string #'upcase)
+    (lambda (_)
+      (lg-effect-view-of lg-buffer-string)))
+   (current-buffer)))
+;; => "HELLO world"
+#+end_src
+
+* Package map
+
+- `looking-glass.el`: optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
+- `looking-glass-buffer.el`: optics for point/mark/buffer text/region/substring, plus effect dispatch for buffer mutation.
+- `looking-glass-regex.el`: regex and text traversals (`lg-regex-all`, `lg-lined`, `lg-utf8`).
+- `laws.org`: law expectations and nil-disambiguation notes.
+
+* Documentation
+
+- Core manual: `doc/looking-glass-manual.org`
+- Buffer manual: `doc/looking-glass-buffer-manual.org`
+- Regex manual: `doc/looking-glass-regex-manual.org`
+
+These are org-mode manuals intended for Texinfo/Info export.
+
+* MELPA manual publishing
+
+MELPA packages repository contents from the selected branch/commit. It does not build manuals from Org/Texinfo build artifacts.
+
+This repository uses CI to build manuals and a dedicated release branch strategy:
+
+- source manuals live in `doc/*.org`;
+- CI builds `.texi`, `.info`, and `dir` with `scripts/build-manuals.sh`;
+- release publishing targets a separate `melpa-release` branch (dry-run workflow currently reports the exact commands only);
+- release dry-run steps are gated on a successful full test run.
+
+For `M-x info-display-manual` support in installed packages:
+
+- package contents must include the generated `*.info` files;
+- package root must include a `dir` file so package activation can add the directory to `Info-directory-list`.
+
+* Tests
+
+#+begin_src sh
+emacs -Q --batch -L . -L test \
+  -l test/looking-glass-test.el \
+  -f ert-run-tests-batch-and-exit
+#+end_src

@@ -1,5 +1,41 @@
 #+TITLE: looking-glass: profunctor lenses in emacs lisp
-* Write documentation
+* DONE Write documentation
+** DONE Refresh README with concise overview and practical examples
+   - [X] Add quickstart and composition examples for core optics
+   - [X] Add state/effect examples that show side-effect-safe buffer edits
+   - [X] Add package map for core, buffer, and regex modules
+** DONE Write core manual in org-mode for info export
+   - [X] Cover optic model, composition, and nil semantics
+   - [X] Document indexed optics, folds, and review/reversal operations
+   - [X] Include law notes and guidance on lossy optics like `lg-unmaybe`
+** DONE Write buffer manual in org-mode for info export
+   - [X] Document point, mark, full-buffer, region, and substring optics
+   - [X] Show state/effect sequencing patterns for mutation
+** DONE Write regex manual in org-mode for info export
+   - [X] Document match/group/all/all-groups traversals and helpers
+   - [X] Document `lg-lined` and `lg-utf8` with roundtrip examples
+** DONE Validate docs against current test suite
+   - [X] Run all tests and ensure examples remain aligned with behavior
+* DONE Automate MELPA-ready manual publishing
+** DONE Add CI workflow strategy for manuals and release branch
+   - [X] Build manuals in CI from org sources
+   - [X] Describe/update dry-run behavior for melpa-release publishing
+** DONE Add dry-run release/publish workflow stubs
+   - [X] Add dry-run MELPA release branch publish action
+   - [X] Add dry-run GitHub release publish action
+** DONE Document info-display-manual requirements
+   - [X] Explain requirement to ship `.info` files in package contents
+   - [X] Explain requirement for `dir` file/menu so package activation adds info path
+** DONE Validate workflow and docs changes
+   - [X] Run tests and verify scripts execute in dry-run mode
+* DONE Strengthen CI test and release gating
+** DONE Run tests for every pushed commit
+   - [X] Update CI trigger to run on all branch pushes
+** DONE Gate release workflows on tests
+   - [X] Add a dedicated test job in release dry-run workflow
+   - [X] Make release dry-run job depend on successful tests
+** DONE Validate CI changes locally
+   - [X] Run full test suite after workflow updates
 * TODO Generic optics for navigating, reading and editing buffers based on syntax and major mode
 ** TODO define generic interface for syntax optics
 ** TODO tree-sitter major mode implementation of the generic interface
