@@ -2192,6 +2192,43 @@ Signals when INDEX is out of range."
    (lambda (source new-focus)
        (lg-nth-set source index new-focus))))
 
+(cl-defgeneric lg-slice-get (source start end)
+  "Read range [START, END) from SOURCE for `lg-slice'.")
+
+(cl-defgeneric lg-slice-set (source start end new-focus)
+  "Replace range [START, END) in SOURCE with NEW-FOCUS for `lg-slice'.")
+
+(cl-defmethod lg-slice-get ((source list) start end)
+  (unless (and (integerp start)
+               (integerp end)
+               (>= start 0)
+               (>= end start)
+               (<= end (length source)))
+    (error "Invalid slice bounds [%s, %s) for list length %s" start end (length source)))
+  (cl-subseq source start end))
+
+(cl-defmethod lg-slice-set ((source list) start end new-focus)
+  (unless (and (integerp start)
+               (integerp end)
+               (>= start 0)
+               (>= end start)
+               (<= end (length source)))
+    (error "Invalid slice bounds [%s, %s) for list length %s" start end (length source)))
+  (unless (listp new-focus)
+    (error "Expected list focus for list source"))
+  (append (cl-subseq source 0 start)
+          new-focus
+          (cl-subseq source end)))
+
+(defun lg-slice (start end)
+  "Lens focusing list range [START, END).
+Setting the focus replaces the range with a list, supporting insertion when START equals END."
+  (lg-lens
+   (lambda (source)
+     (lg-slice-get source start end))
+   (lambda (source new-focus)
+     (lg-slice-set source start end new-focus))))
+
 (defun lg-plist-key (key &optional testfn)
   "Affine traversal focusing KEY in a plist.
 TESTFN defaults to `eq'."

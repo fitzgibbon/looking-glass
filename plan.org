@@ -51,7 +51,13 @@
 ** DONE Validate changes
    - [X] Run full test suite
 * TODO Generic optics for navigating, reading and editing buffers based on syntax and major mode
-** TODO define generic interface for syntax optics
+** DONE define generic interface for syntax optics
+   - [X] Add a dedicated syntax package with adapter protocol generics and syntax-ref model
+   - [X] Provide generic optics for node lookup, parent/child traversal, and node metadata/text
+   - [X] Route node text replacement through effect dispatch instead of direct mutation
+   - [X] Add syntax interface tests with a fake adapter major mode
+   - [X] Update README/manual export wiring and add syntax manual docs
+   - [X] Run full test suite and manual build
 ** TODO tree-sitter major mode implementation of the generic interface
 ** TODO elisp-mode implementation of the generic interface
 ** TODO outline and org-mode implementations of the generic interface

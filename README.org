@@ -42,6 +42,24 @@ Compositional profunctor optics for Emacs Lisp.
 #+RESULTS:
 : id=101 id=122 id=433
 
+** Insert and replace list slices
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+
+(let ((numbers '(1 2 3)))
+  (list
+   (lg-set (lg-slice 1 1) '(4) numbers)
+   (lg-over (lg-slice 1 3)
+            (lambda (segment)
+              (mapcar (lambda (n) (* n 10)) segment))
+            numbers)))
+;; => ((1 4 2 3) (1 20 30))
+#+end_src
+
+#+RESULTS:
+: ((1 4 2 3) (1 20 30))
+
 ** Effect-safe buffer edits in one program
 
 #+begin_src emacs-lisp
@@ -109,6 +127,7 @@ Compositional profunctor optics for Emacs Lisp.
 - ~looking-glass.el~: optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
 - ~looking-glass-buffer.el~: optics for point/mark/buffer text/region/substring, plus effect dispatch for buffer mutation.
 - ~looking-glass-regex.el~: regex and text traversals (~lg-regex-all~, ~lg-lined~, ~lg-utf8~).
+- ~looking-glass-syntax.el~: generic syntax-node interface and optics for mode-aware navigation/editing.
 - ~laws.org~: law expectations and nil-disambiguation notes.
 
 * Documentation
@@ -116,6 +135,7 @@ Compositional profunctor optics for Emacs Lisp.
 - Core manual: ~doc/looking-glass-manual.org~
 - Buffer manual: ~doc/looking-glass-buffer-manual.org~
 - Regex manual: ~doc/looking-glass-regex-manual.org~
+- Syntax manual: ~doc/looking-glass-syntax-manual.org~
 
 These are org-mode manuals intended for Texinfo/Info export.
 

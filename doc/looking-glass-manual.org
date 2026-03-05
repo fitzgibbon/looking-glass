@@ -128,6 +128,27 @@ Useful indexed combinators:
 - ~lg-ireindexed~, ~lg-as-indexed~, ~lg-unindexed~
 - ~lg-ifiltered~, ~lg-indices~, ~lg-indexed-list-filtered~
 
+* List slice lens
+
+~lg-slice~ is a list lens over range ~[START, END)~.
+
+- Viewing returns the selected sublist.
+- Setting replaces the selected range.
+- Insertion is a replacement where ~START == END~.
+
+#+begin_src emacs-lisp
+(let ((numbers '(1 2 3)))
+  (list
+   (lg-set (lg-slice 1 1) '(4) numbers)
+   (lg-over (lg-slice 1 3)
+            (lambda (segment)
+              (mapcar (lambda (n) (* n 10)) segment))
+            numbers)))
+;; => ((1 4 2 3) (1 20 30))
+#+end_src
+
+Bounds are strict: ~0 <= START <= END <= (length source)~.
+
 * Folds and summaries
 
 Fold helpers over any traversal:

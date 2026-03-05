@@ -1,0 +1,68 @@
+#+TITLE: looking-glass-syntax Manual
+#+SUBTITLE: Generic syntax-tree optics interface
+#+AUTHOR: looking-glass contributors
+#+TEXINFO_FILENAME: looking-glass-syntax.info
+#+TEXINFO_DIR_CATEGORY: Emacs
+#+TEXINFO_DIR_TITLE: looking-glass-syntax: (looking-glass-syntax). Syntax optics.
+#+TEXINFO_DIR_DESC: Generic syntax-node interfaces for mode-aware optics.
+#+OPTIONS: toc:2 num:t
+
+* Top
+
+~looking-glass-syntax~ defines a generic interface for syntax-node navigation and editing optics.
+
+It is intentionally backend-agnostic: mode-specific adapters provide node lookup and shape, while this package provides composable optics and effectful text replacement.
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-syntax)
+#+end_src
+
+* Adapter protocol
+
+Implement methods for your major mode adapter:
+
+- ~lg-syntax-adapter-for-mode~
+- ~lg-syntax-node-at-point~
+- ~lg-syntax-node-parent~ (optional)
+- ~lg-syntax-node-children~ (optional)
+- ~lg-syntax-node-bounds-of~
+- ~lg-syntax-node-kind-of~
+- ~lg-syntax-node-text-of~ (optional override)
+- ~lg-syntax-node-replace-text~ (optional override)
+
+Default behavior for text read/replace uses ~lg-syntax-node-bounds-of~ and buffer region edits.
+
+* Optics
+
+- ~lg-syntax-node-ref-at-point~: affine traversal from buffer to syntax ref.
+- ~lg-syntax-node-ref-parent~: affine traversal from syntax ref to parent ref.
+- ~lg-syntax-node-ref-children~: traversal over child refs (read-oriented).
+- ~lg-syntax-node-kind~: getter for node kind.
+- ~lg-syntax-node-bounds~: getter for node bounds.
+- ~lg-syntax-node-text~: lens for node text; updates are effectful.
+
+Syntax refs are ~lg-syntax-ref~ structs containing buffer, adapter, and backend node.
+
+* Effectful node text updates
+
+Node text replacement is represented as an effect operation.
+
+#+begin_src emacs-lisp
+(let* ((node-text
+        (lg-compose (lg-syntax-node-ref-at-point)
+                    lg-syntax-node-text))
+       (buffer (current-buffer)))
+  (lg-over node-text #'upcase buffer))
+#+end_src
+
+Under the hood this delegates to ~lg-syntax-node-replace-text~ through ~lg-effect-handle~, keeping side effects explicit and composable.
+
+* Structural edits status
+
+Current syntax mutations are text-focused:
+
+- child traversal (~lg-syntax-node-ref-children~) is read-oriented and does not set children;
+- there is no built-in effect operation yet for inserting/removing/reordering child nodes.
+
+That means composing child traversal with ~lg-slice~ is not enough yet for effectful node insertion. To support structural edits, adapters need a writable child-sequence surface (or dedicated insert/delete effect operations).
