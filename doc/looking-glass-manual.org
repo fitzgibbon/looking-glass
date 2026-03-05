@@ -4,7 +4,7 @@
 #+TEXINFO_FILENAME: looking-glass.info
 #+TEXINFO_DIR_CATEGORY: Emacs
 #+TEXINFO_DIR_TITLE: looking-glass: (looking-glass). Core profunctor optics.
-#+TEXINFO_DIR_DESC: Composable optics for immutable and effectful transformations.
+#+TEXINFO_DIR_DESC: Composable optics for pure immutable transformations.
 #+OPTIONS: toc:3 num:t
 
 * Top
@@ -52,28 +52,6 @@ Core operators:
 - ~lg-view~, ~lg-preview~, ~lg-has~
 - ~lg-over~, ~lg-set~
 - ~lg-to-list-of~, ~lg-preview-or~
-
-* Effectful helper operations
-
-The effect system now mirrors the broader query/update API, not only view/set:
-
-- source-dependent helpers use ~lg-effect-...~ constructors and ~...!~ runners
-- examples: ~lg-effect-foldl-of~ / ~lg-foldl-of!~, ~lg-effect-ito-list-of~ / ~lg-ito-list-of!~
-- review helpers are available as ~lg-effect-review-of~, ~lg-review!~, ~lg-effect-reviews-of~, and ~lg-reviews!~
-
-Pure operators (~lg-view~, ~lg-preview~, ~lg-over~, ~lg-set~, etc.) reject impure optics. Use effect builders or bang helpers when an optic touches mutable state (for example buffer/syntax optics).
-
-#+begin_src emacs-lisp
-(let ((source [10 20 30]))
-  (list
-   (lg-run-effect
-    (lg-effect-ifoldl-of lg-indexed-vector
-                         (lambda (acc i x) (+ acc (* i x)))
-                         0)
-    source)
-   (lg-ipreview-or! :missing lg-indexed-vector [])))
-;; => (80 :missing)
-#+end_src
 
 * Nil semantics and disambiguation
 

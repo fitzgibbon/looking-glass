@@ -2,10 +2,10 @@
 
 Compositional profunctor optics for Emacs Lisp.
 
-~looking-glass~ gives you one language for reading, transforming, and reviewing data across lists, vectors, plists/alists/hash tables, strings, JSON text, buffers, and regex matches.
+~looking-glass~ gives you one language for reading, transforming, and reviewing data across lists, vectors, plists/alists/hash tables, strings, JSON text, and regex matches.
 
 - Express nested edits once, then reuse safely.
-- Use the same combinators for pure data and effectful buffer updates.
+- Stay fully pure: transforms return new values, so composition stays predictable.
 
 * Quick examples
 
@@ -60,123 +60,16 @@ Compositional profunctor optics for Emacs Lisp.
 #+RESULTS:
 : ((1 4 2 3) (1 20 30))
 
-** Multi-stage syntax rewrite with tree-sitter
-
-#+begin_src emacs-lisp
-(require 'looking-glass)
-(require 'looking-glass-syntax)
-(require 'looking-glass-syntax-treesit)
-
-(with-temp-buffer
-  (insert "(foo)")
-  (setq-local major-mode 'python-ts-mode)
-  (let* ((buffer (current-buffer))
-         (root (lg-syntax-node-ref-at-point 1))
-         (children (lg-compose root lg-syntax-node-children-list))
-         (program
-          (lg-effect-bind
-           ;; Stage 1: duplicate first child with slice insertion.
-           (lg-effect-view-of (lg-compose children (lg-nth 0)))
-           (lambda (first-child)
-             (lg-effect-bind
-              (lg-effect-set-of (lg-compose children (lg-slice 1 1))
-                                (list first-child))
-              (lambda (_)
-                (lg-effect-bind
-                 ;; Stage 2: rename the inserted node.
-                 (lg-effect-set-of (lg-compose children
-                                              (lg-nth 1)
-                                              lg-syntax-node-text)
-                                   "bar")
-                 (lambda (_)
-                   ;; Stage 3: bulk-transform direct children.
-                   (lg-effect-over-of (lg-compose root
-                                                  lg-syntax-node-ref-children
-                                                  lg-syntax-node-text)
-                                      #'upcase)))))))))
-    (lg-run-effect program buffer)
-    (buffer-string)))
-#+end_src
-
-This staged style scales cleanly: each step can focus structure, then text, then whole-child rewrites without leaving the optic pipeline.
-
-** Effect-safe buffer edits in one program
-
-#+begin_src emacs-lisp
-(require 'looking-glass)
-(require 'looking-glass-buffer)
-(require 'looking-glass-regex)
-
-(let* ((upcase-hello
-        (lg-effect-over-of (lg-compose lg-buffer-string
-                                       (lg-regex-match "hello"))
-                           #'upcase))
-       (set-double-ell
-        (lg-effect-set-of (lg-compose lg-buffer-string
-                                      (lg-regex-match "LL" :case-fold nil))
-                          "11")))
-  (list
-   (with-temp-buffer
-     (insert "hello world")
-     (lg-run-effect (lg-effect-bind upcase-hello
-                                    (cl-constantly set-double-ell))
-                    (current-buffer))
-     (buffer-string))
-   (with-temp-buffer
-     (insert "hello world")
-     (lg-run-effect (lg-effect-bind set-double-ell
-                                    (cl-constantly upcase-hello))
-                    (current-buffer))
-     (buffer-string))))
-;; => ("HE11O world" "HELLO world")
-#+end_src
-
-#+RESULTS:
-: ("HE11O world" "HELLO world")
-
-** Immediate mutation when you do not need effect composition
-
-#+begin_src emacs-lisp
-(require 'looking-glass)
-(require 'looking-glass-buffer)
-(require 'looking-glass-regex)
-
-(with-temp-buffer
-  (insert "hello world")
-  (goto-char 1)
-  (set-mark 6)
-  (lg-over! lg-buffer-region-string #'upcase (current-buffer))
-  (lg-set! (lg-compose lg-buffer-string
-                       (lg-regex-all "E" :case-fold nil))
-           "3"
-           (current-buffer))
-  (lg-set! (lg-compose lg-buffer-string
-                       (lg-regex-all "o"))
-           "0"
-           (current-buffer))
-  (lg-view! lg-buffer-string (current-buffer)))
-;; => "H3LL0 world"
-#+end_src
-
-#+RESULTS:
-: H3LLO w0rld
-
-
 * Package map
 
-- ~looking-glass.el~: optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
-- ~looking-glass-buffer.el~: optics for point/mark/buffer text/region/substring, plus effect dispatch for buffer mutation.
-- ~looking-glass-regex.el~: regex and text traversals (~lg-regex-all~, ~lg-lined~, ~lg-utf8~).
-- ~looking-glass-syntax.el~: generic syntax-node interface and optics for mode-aware navigation/editing.
-- ~looking-glass-syntax-treesit.el~: tree-sitter-backed implementation of syntax adapter generics.
+- ~looking-glass.el~: pure optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
+- ~looking-glass-regex.el~: pure regex and text traversals (~lg-regex-all~, ~lg-lined~, ~lg-utf8~).
 - ~laws.org~: law expectations and nil-disambiguation notes.
 
 * Documentation
 
 - Core manual: ~doc/looking-glass-manual.org~
-- Buffer manual: ~doc/looking-glass-buffer-manual.org~
 - Regex manual: ~doc/looking-glass-regex-manual.org~
-- Syntax manual: ~doc/looking-glass-syntax-manual.org~
 
 These are org-mode manuals intended for Texinfo/Info export.
 

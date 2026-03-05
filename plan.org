@@ -104,7 +104,20 @@
    - [X] Run full test suite
 * DONE Reduce effect wrapper boilerplate with macros
 ** DONE Macro-generate effect and bang wrappers
-   - [X] Add macros for source-dependent wrappers and pure wrappers
-   - [X] Replace repetitive wrapper defs with macro invocations
+    - [X] Add macros for source-dependent wrappers and pure wrappers
+    - [X] Replace repetitive wrapper defs with macro invocations
 ** DONE Validate macro refactor
+    - [X] Run full test suite
+* DONE Remove impure/effectful optics and keep pure core only
+** DONE Remove impure packages from source tree
+   - [X] Delete syntax and buffer packages and their tests/manuals
+   - [X] Update manual export and test entrypoints to only load remaining packages
+** DONE Remove effect/state systems from core optic package
+   - [X] Delete effect and state data types, operations, and helper APIs
+   - [X] Delete impure optic tagging and pure-operation gate checks
+   - [X] Keep only pure optic API surface in `looking-glass.el`
+** DONE Refresh docs for pure-only package layout
+   - [X] Rewrite README examples/package map to remove effectful/buffer/syntax content
+   - [X] Update core manual language to remove effect API references
+** DONE Validate pure-only project
    - [X] Run full test suite
