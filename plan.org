@@ -58,7 +58,35 @@
    - [X] Add syntax interface tests with a fake adapter major mode
    - [X] Update README/manual export wiring and add syntax manual docs
    - [X] Run full test suite and manual build
-** TODO tree-sitter major mode implementation of the generic interface
+** DONE enable effectful child-list structural edits via optics
+   - [X] Add syntax effect operation and generic method for setting node children
+   - [X] Expose writable children-list optic that composes with ~lg-slice~
+   - [X] Update syntax traversal behavior/docs for structural edits
+   - [X] Add tests proving ~lg-slice~ insertion over children updates buffer/tree
+   - [X] Run full test suite and manual build
+** DONE tree-sitter major mode implementation of the generic interface
+   - [X] Add tree-sitter adapter module and package metadata
+   - [X] Implement adapter resolution and node protocol methods
+   - [X] Add focused tests using stubbed treesit APIs
+   - [X] Wire tests into suite and update docs/README mentions
+   - [X] Run full test suite and manual build
+** DONE enable tree-sitter structural child-list writes
+   - [X] Implement ~lg-syntax-node-set-children~ for tree-sitter adapter
+   - [X] Add tests proving child-list ~lg-slice~ writes mutate buffer
+   - [X] Update syntax manual to describe tree-sitter structural edit behavior
+   - [X] Run full test suite and manual build
+** DONE support tree-sitter insertion into empty-child nodes and refresh docs examples
+   - [X] Handle empty-child insertion ranges in tree-sitter adapter
+   - [X] Add tests for inserting into empty delimited nodes
+   - [X] Add detailed multi-stage README syntax editing example
+   - [X] Update syntax manual with multi-stage workflow and empty-child behavior
+   - [X] Run full test suite and manual build
+** DONE enforce purity boundary between pure optics and impure optics
+   - [X] Add impure optic metadata and composition propagation in core optic model
+   - [X] Reject pure API calls on impure optics while keeping bang/effect APIs working
+   - [X] Mark buffer/syntax optics as impure and update tests
+   - [X] Update docs/examples to use bang/effect APIs for impure syntax edits
+   - [X] Run full test suite and manual build
 ** TODO elisp-mode implementation of the generic interface
 ** TODO outline and org-mode implementations of the generic interface
 * DONE Add effectful wrappers for optic operations

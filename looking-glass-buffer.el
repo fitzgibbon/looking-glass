@@ -97,65 +97,70 @@
   buffer)
 
 (defconst lg-buffer-point
-  (lg-lens
-   (lambda (buffer)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-point-get))
-      buffer))
-   (lambda (buffer new-point)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-point-set :point new-point))
-      buffer)))
+  (lg-mark-impure
+   (lg-lens
+    (lambda (buffer)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-point-get))
+       buffer))
+    (lambda (buffer new-point)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-point-set :point new-point))
+       buffer))))
   "Lens focusing point position in a buffer.")
 
 (defconst lg-buffer-mark
-  (lg-lens
-   (lambda (buffer)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-mark-get))
-      buffer))
-   (lambda (buffer new-mark)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-mark-set :mark new-mark))
-      buffer)))
+  (lg-mark-impure
+   (lg-lens
+    (lambda (buffer)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-mark-get))
+       buffer))
+    (lambda (buffer new-mark)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-mark-set :mark new-mark))
+       buffer))))
   "Lens focusing mark position in a buffer.")
 
 (defconst lg-buffer-string
-  (lg-lens
-   (lambda (buffer)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-string-get))
-      buffer))
-   (lambda (buffer new-contents)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-string-set :text new-contents))
-      buffer)))
+  (lg-mark-impure
+   (lg-lens
+    (lambda (buffer)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-string-get))
+       buffer))
+    (lambda (buffer new-contents)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-string-set :text new-contents))
+       buffer))))
   "Lens focusing full text contents of a buffer.")
 
 (defconst lg-buffer-region-string
-  (lg-affine
-   (lambda (buffer)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-region-get))
-      buffer))
-   (lambda (buffer new-text)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-region-set :text new-text))
-      buffer)))
+  (lg-mark-impure
+   (lg-affine
+    (lambda (buffer)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-region-get))
+       buffer))
+    (lambda (buffer new-text)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-region-set :text new-text))
+       buffer))))
   "Affine traversal focusing active region text in a buffer.")
 
 (defun lg-buffer-substring (start end)
   "Lens focusing text in fixed START/END buffer positions."
-  (lg-lens
-   (lambda (buffer)
-     (lg-run-effect
-      (lg-effect-perform (make-lg-buffer-op-substring-get :start start :end end))
-      buffer))
-   (lambda (buffer new-text)
-     (lg-run-effect
-      (lg-effect-perform
-       (make-lg-buffer-op-substring-set :start start :end end :text new-text))
-      buffer))))
+  (lg-mark-impure
+   (lg-lens
+    (lambda (buffer)
+      (lg-run-effect
+       (lg-effect-perform (make-lg-buffer-op-substring-get :start start :end end))
+       buffer))
+    (lambda (buffer new-text)
+      (lg-run-effect
+       (lg-effect-perform
+        (make-lg-buffer-op-substring-set :start start :end end :text new-text))
+       buffer)))))
 
 (provide 'looking-glass-buffer)
 

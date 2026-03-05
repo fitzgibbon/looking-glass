@@ -18,6 +18,12 @@ It is intentionally backend-agnostic: mode-specific adapters provide node lookup
 (require 'looking-glass-syntax)
 #+end_src
 
+Tree-sitter support is provided by a separate adapter module:
+
+#+begin_src emacs-lisp
+(require 'looking-glass-syntax-treesit)
+#+end_src
+
 * Adapter protocol
 
 Implement methods for your major mode adapter:
@@ -30,6 +36,7 @@ Implement methods for your major mode adapter:
 - ~lg-syntax-node-kind-of~
 - ~lg-syntax-node-text-of~ (optional override)
 - ~lg-syntax-node-replace-text~ (optional override)
+- ~lg-syntax-node-set-children~ (for structural edits)
 
 Default behavior for text read/replace uses ~lg-syntax-node-bounds-of~ and buffer region edits.
 
@@ -37,10 +44,11 @@ Default behavior for text read/replace uses ~lg-syntax-node-bounds-of~ and buffe
 
 - ~lg-syntax-node-ref-at-point~: affine traversal from buffer to syntax ref.
 - ~lg-syntax-node-ref-parent~: affine traversal from syntax ref to parent ref.
-- ~lg-syntax-node-ref-children~: traversal over child refs (read-oriented).
+- ~lg-syntax-node-ref-children~: traversal over child refs (writable via effects).
 - ~lg-syntax-node-kind~: getter for node kind.
 - ~lg-syntax-node-bounds~: getter for node bounds.
 - ~lg-syntax-node-text~: lens for node text; updates are effectful.
+- ~lg-syntax-node-children-list~: lens for child refs list; compose with ~lg-slice~ for insert/delete/replace.
 
 Syntax refs are ~lg-syntax-ref~ structs containing buffer, adapter, and backend node.
 
@@ -58,11 +66,68 @@ Node text replacement is represented as an effect operation.
 
 Under the hood this delegates to ~lg-syntax-node-replace-text~ through ~lg-effect-handle~, keeping side effects explicit and composable.
 
-* Structural edits status
+* Structural edits with slices
 
-Current syntax mutations are text-focused:
+Structural child edits go through the same effect system. When an adapter implements ~lg-syntax-node-set-children~, you can compose children with ~lg-slice~.
 
-- child traversal (~lg-syntax-node-ref-children~) is read-oriented and does not set children;
-- there is no built-in effect operation yet for inserting/removing/reordering child nodes.
+#+begin_src emacs-lisp
+(let* ((root-optic (lg-compose (lg-syntax-node-ref-at-point)
+                               lg-syntax-node-ref-parent))
+       (children-optic (lg-compose root-optic
+                                   lg-syntax-node-children-list)))
+  (lg-set! (lg-compose children-optic (lg-slice 1 1))
+           (list existing-child-ref)
+           (current-buffer)))
+#+end_src
 
-That means composing child traversal with ~lg-slice~ is not enough yet for effectful node insertion. To support structural edits, adapters need a writable child-sequence surface (or dedicated insert/delete effect operations).
+This pattern enables insert/reorder/delete in one model while keeping mutations effect-dispatched.
+
+* Tree-sitter adapter
+
+~looking-glass-syntax-treesit~ implements the generic syntax protocol for buffers with active tree-sitter parsers.
+
+- adapter resolution via ~lg-syntax-adapter-for-mode~ when ~treesit-parser-list~ is non-empty;
+- node-at-point, parent, children, kind, bounds, and text operations are backed by tree-sitter APIs;
+- text edits are effectful through existing ~lg-syntax-node-text~ behavior.
+
+Structural child-list writes through ~lg-syntax-node-set-children~ remain adapter-specific. The tree-sitter adapter supports:
+
+- replacing existing child ranges by rewriting the buffer span covered by current children;
+- inserting into empty-child nodes by selecting an insertion range from node shape (delimited forms insert inside delimiters; otherwise insertion happens at node end).
+
+* Multi-stage workflow example
+
+The same source can be transformed in several focused stages while staying inside optics composition.
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-syntax)
+(require 'looking-glass-syntax-treesit)
+
+(with-temp-buffer
+  (insert "(foo)")
+  (setq-local major-mode 'python-ts-mode)
+  (let* ((buffer (current-buffer))
+         (root (lg-syntax-node-ref-at-point 1))
+         (children (lg-compose root lg-syntax-node-children-list))
+         ;; Stage 1: insert by slicing the child list.
+         (first-child (lg-view! (lg-compose children (lg-nth 0)) buffer))
+         (_ (lg-set! (lg-compose children (lg-slice 1 1))
+                     (list first-child)
+                     buffer))
+         ;; Stage 2: retarget one node's text.
+         (_ (lg-set! (lg-compose children
+                                (lg-nth 1)
+                                lg-syntax-node-text)
+                     "bar"
+                     buffer))
+         ;; Stage 3: bulk-transform direct children.
+         (_ (lg-over! (lg-compose root
+                                  lg-syntax-node-ref-children
+                                  lg-syntax-node-text)
+                      #'upcase
+                      buffer)))
+    (buffer-string)))
+#+end_src
+
+When the focused node currently has no children, stage 1 still works with ~lg-slice~ insertion and delegates to the tree-sitter adapter's empty-child insertion rules.

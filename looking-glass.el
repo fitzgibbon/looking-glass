@@ -94,10 +94,39 @@
   run)
 
 (cl-defstruct lg-optic
-  apply)
+  apply
+  impure)
 
 (cl-defstruct lg-indexed-optic
-  apply)
+  apply
+  impure)
+
+(defun lg-impure-optic-p (optic)
+  "Return non-nil when OPTIC is marked as impure."
+  (cond
+   ((lg-optic-p optic) (lg-optic-impure optic))
+   ((lg-indexed-optic-p optic) (lg-indexed-optic-impure optic))
+   (t nil)))
+
+(defun lg-mark-impure (optic)
+  "Return OPTIC marked as impure.
+Impure optics must be used via effect APIs or bang helpers."
+  (cond
+   ((lg-optic-p optic)
+    (let ((copy (copy-lg-optic optic)))
+      (setf (lg-optic-impure copy) t)
+      copy))
+   ((lg-indexed-optic-p optic)
+    (let ((copy (copy-lg-indexed-optic optic)))
+      (setf (lg-indexed-optic-impure copy) t)
+      copy))
+   (t
+    (error "Expected optic"))))
+
+(defun lg--ensure-pure-optic (optic)
+  "Signal when OPTIC is impure in a pure operation."
+  (when (lg-impure-optic-p optic)
+    (error "Impure optic used in pure operation; use effect APIs or bang helpers")))
 
 (defun lg-left (value)
   "Construct a left Either VALUE."
@@ -434,20 +463,22 @@ FN receives EFFECT result and must return another effect program."
   "Handle OPERATION in CONTEXT.")
 
 (cl-defmethod lg-effect-handle (context (operation lg-effect-op-view))
-  (lg-view (lg-effect-op-view-optic operation) context))
+  (lg--view (lg-effect-op-view-optic operation) context t))
 
 (cl-defmethod lg-effect-handle (context (operation lg-effect-op-preview))
-  (lg-preview (lg-effect-op-preview-optic operation) context))
+  (lg--preview (lg-effect-op-preview-optic operation) context t))
 
 (cl-defmethod lg-effect-handle (context (operation lg-effect-op-over))
-  (lg-over (lg-effect-op-over-optic operation)
-           (lg-effect-op-over-fn operation)
-           context))
+  (lg--over (lg-effect-op-over-optic operation)
+            (lg-effect-op-over-fn operation)
+            context
+            t))
 
 (cl-defmethod lg-effect-handle (context (operation lg-effect-op-set))
-  (lg-set (lg-effect-op-set-optic operation)
-          (lg-effect-op-set-value operation)
-          context))
+  (lg--set (lg-effect-op-set-optic operation)
+           (lg-effect-op-set-value operation)
+           context
+           t))
 
 (defun lg-effect-perform (operation)
   "Lift OPERATION into an effect program.
@@ -991,12 +1022,16 @@ When EMPTY is nil, nil is used as the empty value for left branches in Choice."
                            (funcall (lg-rep-re-run rep)
                                     (funcall unright pbd)))))))))
 
-(defun lg--run-optic (optic profunctor pab)
+(defun lg--run-optic (optic profunctor pab &optional allow-impure)
   "Run OPTIC against PROFUNCTOR using PAB."
+  (unless allow-impure
+    (lg--ensure-pure-optic optic))
   (funcall (lg-optic-apply optic) profunctor pab))
 
-(defun lg--run-indexed-optic (optic profunctor indexed-pib)
+(defun lg--run-indexed-optic (optic profunctor indexed-pib &optional allow-impure)
   "Run indexed OPTIC against PROFUNCTOR using INDEXED-PIB."
+  (unless allow-impure
+    (lg--ensure-pure-optic optic))
   (funcall (lg-indexed-optic-apply optic) profunctor indexed-pib))
 
 (defconst lg-id
@@ -1011,8 +1046,12 @@ When EMPTY is nil, nil is used as the empty value for left branches in Choice."
   "Compose OUTER with INNER.
 The resulting optic focuses through INNER first, then OUTER."
   (make-lg-optic
+   :impure (or (lg-impure-optic-p outer)
+               (lg-impure-optic-p inner))
    :apply (lambda (p pab)
-            (lg--run-optic outer p (lg--run-optic inner p pab)))))
+            (funcall (lg-optic-apply outer)
+                     p
+                     (funcall (lg-optic-apply inner) p pab)))))
 
 (defun lg-compose (&rest optics)
   "Compose OPTICS from right to left.
@@ -1036,8 +1075,12 @@ This is syntactic sugar for `lg-compose'."
 (defun lg-compose-indexed2 (outer inner)
   "Compose indexed OUTER with indexed INNER."
   (make-lg-indexed-optic
+   :impure (or (lg-impure-optic-p outer)
+               (lg-impure-optic-p inner))
    :apply (lambda (p pib)
-            (lg--run-indexed-optic outer p (lg--run-indexed-optic inner p pib)))))
+            (funcall (lg-indexed-optic-apply outer)
+                     p
+                     (funcall (lg-indexed-optic-apply inner) p pib)))))
 
 (defun lg-compose-indexed (&rest optics)
   "Compose indexed OPTICS from right to left."
@@ -1691,16 +1734,24 @@ TESTFN applies to plist/alist key comparisons."
   "Lens focusing presence and value for KEY in a hash table."
   (lg-at key))
 
-(defun lg-over (optic fn source)
-  "Apply FN over OPTIC focus in SOURCE."
+(defun lg--over (optic fn source &optional allow-impure)
+  "Apply FN over OPTIC focus in SOURCE.
+When ALLOW-IMPURE is non-nil, impure optics are permitted."
   (let* ((app (lg--identity-applicative))
          (profunctor (lg--identity-star-profunctor app))
          (transform (lg--run-optic
                      optic
                      profunctor
+                     ;; allow-impure
                      (lambda (focus)
-                        (make-lg-identity :value (funcall fn focus))))))
+                       (make-lg-identity :value (funcall fn focus)))
+                     allow-impure
+                     )))
     (lg-identity-value (funcall transform source))))
+
+(defun lg-over (optic fn source)
+  "Apply FN over OPTIC focus in SOURCE."
+  (lg--over optic fn source nil))
 
 (defun lg-map-of (optic fn source)
   "Map FN over OPTIC in SOURCE."
@@ -1710,9 +1761,10 @@ TESTFN applies to plist/alist key comparisons."
   "Map FN over OPTIC in SOURCE with source-first argument order."
   (lg-over optic fn source))
 
-(defun lg-iover (optic fn source)
+(defun lg--iover (optic fn source &optional allow-impure)
   "Apply indexed FN over OPTIC focus in SOURCE.
-FN is called as (FN index focus)."
+FN is called as (FN index focus).
+When ALLOW-IMPURE is non-nil, impure optics are permitted."
   (let* ((app (lg--identity-applicative))
          (profunctor (lg--indexed-star-profunctor app))
          (transform (lg--run-indexed-optic
@@ -1721,8 +1773,14 @@ FN is called as (FN index focus)."
                      (make-lg-indexed
                       :run (lambda (index focus)
                              (make-lg-identity
-                              :value (funcall fn index focus)))))))
+                              :value (funcall fn index focus))))
+                     allow-impure)))
     (lg-identity-value (funcall (lg-indexed-run transform) lg-no-index source))))
+
+(defun lg-iover (optic fn source)
+  "Apply indexed FN over OPTIC focus in SOURCE.
+FN is called as (FN index focus)."
+  (lg--iover optic fn source nil))
 
 (defun lg-imap-of (optic fn source)
   "Indexed map over OPTIC in SOURCE using FN.
@@ -1734,13 +1792,18 @@ FN is called as (FN index focus)."
 FN is called as (FN index focus)."
   (lg-iover optic fn source))
 
+(defun lg--set (optic value source &optional allow-impure)
+  "Set OPTIC focus to VALUE in SOURCE.
+When ALLOW-IMPURE is non-nil, impure optics are permitted."
+  (lg--over optic (lambda (_focus) value) source allow-impure))
+
 (defun lg-set (optic value source)
   "Set OPTIC focus to VALUE in SOURCE."
-  (lg-over optic (lambda (_focus) value) source))
+  (lg--set optic value source nil))
 
 (defun lg-iset (optic value source)
   "Set indexed OPTIC focus to VALUE in SOURCE, ignoring indices."
-  (lg-iover optic (lambda (_index _focus) value) source))
+  (lg--iover optic (lambda (_index _focus) value) source nil))
 
 (defun lg-foldl-of (optic fn initial source)
   "Left-fold OPTIC focuses in SOURCE with FN and INITIAL."
@@ -1956,8 +2019,9 @@ BUILDER maps focus-domain values into source-domain values."
   (let ((result (lg-preview optic source)))
     (if (lg-just-p result) (cdr result) default)))
 
-(defun lg-to-list-of (optic source)
-  "Collect all focus values for OPTIC in SOURCE."
+(defun lg--to-list-of (optic source &optional allow-impure)
+  "Collect all focus values for OPTIC in SOURCE.
+When ALLOW-IMPURE is non-nil, impure optics are permitted."
   (let* ((monoid (make-lg-monoid :empty nil :append #'append))
          (app (lg--const-applicative monoid))
          (profunctor (lg--star-profunctor app))
@@ -1965,10 +2029,15 @@ BUILDER maps focus-domain values into source-domain values."
                      optic
                      profunctor
                      (lambda (focus)
-                       (make-lg-const :value (list focus))))))
+                       (make-lg-const :value (list focus)))
+                     allow-impure)))
     (lg-const-value (funcall transform source))))
 
-(defun lg-ito-list-of (optic source)
+(defun lg-to-list-of (optic source)
+  "Collect all focus values for OPTIC in SOURCE."
+  (lg--to-list-of optic source nil))
+
+(defun lg--ito-list-of (optic source &optional allow-impure)
   "Collect all indexed focus values for OPTIC in SOURCE.
 Each item is (INDEX . FOCUS)."
   (let* ((monoid (make-lg-monoid :empty nil :append #'append))
@@ -1979,13 +2048,28 @@ Each item is (INDEX . FOCUS)."
                      profunctor
                      (make-lg-indexed
                       :run (lambda (index focus)
-                             (make-lg-const :value (list (cons index focus))))))))
+                             (make-lg-const :value (list (cons index focus)))))
+                     allow-impure)))
     (lg-const-value (funcall (lg-indexed-run transform) lg-no-index source))))
+
+(defun lg-ito-list-of (optic source)
+  "Collect all indexed focus values for OPTIC in SOURCE.
+Each item is (INDEX . FOCUS)."
+  (lg--ito-list-of optic source nil))
 
 (defun lg-ipreview (optic source)
   "Return a disambiguated indexed preview for OPTIC in SOURCE.
 Returns tagged maybe containing (INDEX . VALUE)."
-  (let ((focuses (lg-ito-list-of optic source)))
+  (let ((focuses (lg--ito-list-of optic source nil)))
+    (if focuses
+        (lg-just (car focuses))
+      lg-nothing)))
+
+(defun lg--preview (optic source &optional allow-impure)
+  "Return a disambiguated preview for OPTIC in SOURCE.
+Returns tagged maybe (`lg-nothing' or `(lg-just . VALUE)').
+VALUE can be nil when nil is an actual focus value."
+  (let ((focuses (lg--to-list-of optic source allow-impure)))
     (if focuses
         (lg-just (car focuses))
       lg-nothing)))
@@ -1994,10 +2078,7 @@ Returns tagged maybe containing (INDEX . VALUE)."
   "Return a disambiguated preview for OPTIC in SOURCE.
 Returns tagged maybe (`lg-nothing' or `(lg-just . VALUE)').
 VALUE can be nil when nil is an actual focus value."
-  (let ((focuses (lg-to-list-of optic source)))
-    (if focuses
-        (lg-just (car focuses))
-      lg-nothing)))
+  (lg--preview optic source nil))
 
 (defun lg-ihas (optic source)
   "Return non-nil when indexed OPTIC has at least one focus in SOURCE."
@@ -2015,13 +2096,18 @@ Signals `lg-no-focus' when no focus exists."
         (cdr result)
       (signal 'lg-no-focus (list optic source)))))
 
-(defun lg-view (optic source)
+(defun lg--view (optic source &optional allow-impure)
   "View exactly one expected focus from OPTIC in SOURCE.
 Signals `lg-no-focus' when no focus exists."
-  (let ((result (lg-preview optic source)))
+  (let ((result (lg--preview optic source allow-impure)))
     (if (lg-just-p result)
         (cdr result)
       (signal 'lg-no-focus (list optic source)))))
+
+(defun lg-view (optic source)
+  "View exactly one expected focus from OPTIC in SOURCE.
+Signals `lg-no-focus' when no focus exists."
+  (lg--view optic source nil))
 
 (defun lg-view-non-nil (optic source)
   "View focus with OPTIC in SOURCE and require a non-nil result."

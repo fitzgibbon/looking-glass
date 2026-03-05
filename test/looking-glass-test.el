@@ -4,5 +4,6 @@
 (require 'looking-glass-buffer-test)
 (require 'looking-glass-regex-test)
 (require 'looking-glass-syntax-test)
+(require 'looking-glass-syntax-treesit-test)
 
 ;;; looking-glass-test.el ends here

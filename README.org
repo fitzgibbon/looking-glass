@@ -60,6 +60,41 @@ Compositional profunctor optics for Emacs Lisp.
 #+RESULTS:
 : ((1 4 2 3) (1 20 30))
 
+** Multi-stage syntax rewrite with tree-sitter
+
+#+begin_src emacs-lisp
+(require 'looking-glass)
+(require 'looking-glass-syntax)
+(require 'looking-glass-syntax-treesit)
+
+(with-temp-buffer
+  (insert "(foo)")
+  (setq-local major-mode 'python-ts-mode)
+  (let* ((buffer (current-buffer))
+         (root (lg-syntax-node-ref-at-point 1))
+         (children (lg-compose root lg-syntax-node-children-list))
+         ;; Stage 1: duplicate first child with slice insertion.
+         (first-child (lg-view! (lg-compose children (lg-nth 0)) buffer))
+         (_ (lg-set! (lg-compose children (lg-slice 1 1))
+                     (list first-child)
+                     buffer))
+         ;; Stage 2: rename the inserted node by editing text effectfully.
+         (_ (lg-set! (lg-compose children
+                                (lg-nth 1)
+                                lg-syntax-node-text)
+                     "bar"
+                     buffer))
+         ;; Stage 3: apply a bulk transform to all direct children.
+         (_ (lg-over! (lg-compose root
+                                  lg-syntax-node-ref-children
+                                  lg-syntax-node-text)
+                      #'upcase
+                      buffer)))
+    (buffer-string)))
+#+end_src
+
+This staged style scales cleanly: each step can focus structure, then text, then whole-child rewrites without leaving the optic pipeline.
+
 ** Effect-safe buffer edits in one program
 
 #+begin_src emacs-lisp
@@ -128,6 +163,7 @@ Compositional profunctor optics for Emacs Lisp.
 - ~looking-glass-buffer.el~: optics for point/mark/buffer text/region/substring, plus effect dispatch for buffer mutation.
 - ~looking-glass-regex.el~: regex and text traversals (~lg-regex-all~, ~lg-lined~, ~lg-utf8~).
 - ~looking-glass-syntax.el~: generic syntax-node interface and optics for mode-aware navigation/editing.
+- ~looking-glass-syntax-treesit.el~: tree-sitter-backed implementation of syntax adapter generics.
 - ~laws.org~: law expectations and nil-disambiguation notes.
 
 * Documentation

@@ -23,6 +23,10 @@
   ref
   text)
 
+(cl-defstruct lg-syntax-op-node-children-set
+  ref
+  children)
+
 (defun lg-syntax--live-buffer (value)
   "Return VALUE when it is a live buffer, or signal otherwise."
   (if (buffer-live-p value)
@@ -86,11 +90,18 @@
   "Replace NODE text in BUFFER with TEXT for ADAPTER.
 Return replacement node when available; otherwise nil.")
 
+(cl-defgeneric lg-syntax-node-set-children (adapter buffer node children)
+  "Set NODE CHILDREN in BUFFER for ADAPTER.
+CHILDREN is a list of backend nodes. Return replacement node when available.")
+
 (cl-defmethod lg-syntax-node-parent ((_adapter t) (_buffer buffer) (_node t))
   nil)
 
 (cl-defmethod lg-syntax-node-children ((_adapter t) (_buffer buffer) (_node t))
   nil)
+
+(cl-defmethod lg-syntax-node-set-children ((_adapter t) (_buffer buffer) (_node t) (_children list))
+  (error "Adapter does not support setting syntax node children"))
 
 (cl-defmethod lg-syntax-node-text-of ((adapter t) (buffer buffer) (node t))
   (let* ((bounds (lg-syntax-node-bounds-of adapter buffer node))
@@ -121,75 +132,81 @@ Return replacement node when available; otherwise nil.")
   "Affine traversal focusing syntax node ref at POINT in a buffer.
 When POINT is nil, current point is used in the source buffer.
 When ADAPTER is nil, adapter is resolved from the buffer major mode."
-  (lg-affine
-   (lambda (buffer)
-     (let* ((live (lg-syntax--live-buffer buffer))
-            (resolved-adapter (lg-syntax--resolve-adapter live adapter))
-            (resolved-point (or point (with-current-buffer live (point)))))
-       (if resolved-adapter
-           (let ((node (lg-syntax-node-at-point resolved-adapter live resolved-point)))
-             (if node
-                 (lg-just (make-lg-syntax-ref :buffer live
-                                              :adapter resolved-adapter
-                                              :node node))
-               lg-nothing))
-         lg-nothing)))
-   (lambda (buffer replacement)
-     (let ((ref (lg-syntax--ensure-ref replacement)))
-       (unless (eq (lg-syntax-ref-buffer ref) (lg-syntax--live-buffer buffer))
-         (error "Replacement ref must point at source buffer"))
-       buffer))))
+  (lg-mark-impure
+   (lg-affine
+    (lambda (buffer)
+      (let* ((live (lg-syntax--live-buffer buffer))
+             (resolved-adapter (lg-syntax--resolve-adapter live adapter))
+             (resolved-point (or point (with-current-buffer live (point)))))
+        (if resolved-adapter
+            (let ((node (lg-syntax-node-at-point resolved-adapter live resolved-point)))
+              (if node
+                  (lg-just (make-lg-syntax-ref :buffer live
+                                               :adapter resolved-adapter
+                                               :node node))
+                lg-nothing))
+          lg-nothing)))
+    (lambda (buffer replacement)
+      (let ((ref (lg-syntax--ensure-ref replacement)))
+        (unless (eq (lg-syntax-ref-buffer ref) (lg-syntax--live-buffer buffer))
+          (error "Replacement ref must point at source buffer"))
+        buffer)))))
 
 (defconst lg-syntax-node-ref-parent
-  (lg-affine
-   (lambda (ref)
-     (setq ref (lg-syntax--ensure-ref ref))
-     (let* ((buffer (lg-syntax-ref-buffer ref))
-            (adapter (lg-syntax-ref-adapter ref))
-            (node (lg-syntax-ref-node ref))
-            (parent (lg-syntax-node-parent adapter buffer node)))
-       (if parent
-           (lg-just (make-lg-syntax-ref :buffer buffer :adapter adapter :node parent))
-         lg-nothing)))
-   (lambda (_ref replacement)
-     (lg-syntax--ensure-ref replacement)))
+  (lg-mark-impure
+   (lg-affine
+    (lambda (ref)
+      (setq ref (lg-syntax--ensure-ref ref))
+      (let* ((buffer (lg-syntax-ref-buffer ref))
+             (adapter (lg-syntax-ref-adapter ref))
+             (node (lg-syntax-ref-node ref))
+             (parent (lg-syntax-node-parent adapter buffer node)))
+        (if parent
+            (lg-just (make-lg-syntax-ref :buffer buffer :adapter adapter :node parent))
+          lg-nothing)))
+    (lambda (_ref replacement)
+      (lg-syntax--ensure-ref replacement))))
   "Affine traversal focusing parent syntax node from a syntax ref.")
 
 (defconst lg-syntax-node-ref-children
-  (lg-traversal
-   (lambda (afb source applicative)
-     (setq source (lg-syntax--ensure-ref source))
-     (let* ((buffer (lg-syntax-ref-buffer source))
-            (adapter (lg-syntax-ref-adapter source))
-            (node (lg-syntax-ref-node source))
-            (fmap (lg-applicative-fmap applicative))
-            (children (lg-syntax-node-children adapter buffer node))
-            (child-refs
-             (mapcar (lambda (child)
-                       (make-lg-syntax-ref :buffer buffer :adapter adapter :node child))
-                     children)))
-       (funcall fmap
-                (lambda (_replacements) source)
-                (lg-syntax--traverse-list applicative afb child-refs)))))
+  (lg-mark-impure
+   (lg-traversal
+    (lambda (afb source applicative)
+      (setq source (lg-syntax--ensure-ref source))
+      (let* ((buffer (lg-syntax-ref-buffer source))
+             (adapter (lg-syntax-ref-adapter source))
+             (node (lg-syntax-ref-node source))
+             (fmap (lg-applicative-fmap applicative))
+             (children (lg-syntax-node-children adapter buffer node))
+             (child-refs
+              (mapcar (lambda (child)
+                        (make-lg-syntax-ref :buffer buffer :adapter adapter :node child))
+                      children)))
+        (funcall fmap
+                 (lambda (replacements)
+                   (lg-syntax-set-node-children replacements source))
+                 (lg-syntax--traverse-list applicative afb child-refs))))))
   "Traversal focusing child syntax refs from a syntax ref.
-Child traversal is read-oriented: updates keep the original source ref.")
+Setting traversal focuses updates children through the syntax effect system.")
 
 (defconst lg-syntax-node-kind
-  (lg-getter
-   (lambda (ref)
-     (setq ref (lg-syntax--ensure-ref ref))
-     (lg-syntax-node-kind-of (lg-syntax-ref-adapter ref)
-                             (lg-syntax-ref-buffer ref)
-                             (lg-syntax-ref-node ref))))
+  (lg-mark-impure
+   (lg-getter
+    (lambda (ref)
+      (setq ref (lg-syntax--ensure-ref ref))
+      (lg-syntax-node-kind-of (lg-syntax-ref-adapter ref)
+                              (lg-syntax-ref-buffer ref)
+                              (lg-syntax-ref-node ref)))))
   "Getter focusing syntax node kind from a syntax ref.")
 
 (defconst lg-syntax-node-bounds
-  (lg-getter
-   (lambda (ref)
-     (setq ref (lg-syntax--ensure-ref ref))
-     (lg-syntax-node-bounds-of (lg-syntax-ref-adapter ref)
-                               (lg-syntax-ref-buffer ref)
-                               (lg-syntax-ref-node ref))))
+  (lg-mark-impure
+   (lg-getter
+    (lambda (ref)
+      (setq ref (lg-syntax--ensure-ref ref))
+      (lg-syntax-node-bounds-of (lg-syntax-ref-adapter ref)
+                                (lg-syntax-ref-buffer ref)
+                                (lg-syntax-ref-node ref)))))
   "Getter focusing syntax node bounds from a syntax ref.")
 
 (cl-defmethod lg-effect-handle ((_buffer buffer) (operation lg-syntax-op-node-text-set))
@@ -203,16 +220,52 @@ Child traversal is read-oriented: updates keep the original source ref.")
                         :adapter adapter
                         :node (or replacement node))))
 
+(cl-defmethod lg-effect-handle ((_buffer buffer) (operation lg-syntax-op-node-children-set))
+  (let* ((ref (lg-syntax-op-node-children-set-ref operation))
+         (children (lg-syntax-op-node-children-set-children operation))
+         (buffer (lg-syntax-ref-buffer ref))
+         (adapter (lg-syntax-ref-adapter ref))
+         (node (lg-syntax-ref-node ref))
+         (child-nodes
+          (mapcar
+           (lambda (child-ref)
+             (setq child-ref (lg-syntax--ensure-ref child-ref))
+             (unless (eq (lg-syntax-ref-buffer child-ref) buffer)
+               (error "Child refs must use the same buffer"))
+             (lg-syntax-ref-node child-ref))
+           children))
+         (replacement (lg-syntax-node-set-children adapter buffer node child-nodes)))
+    (make-lg-syntax-ref :buffer buffer
+                        :adapter adapter
+                        :node (or replacement node))))
+
 (defconst lg-syntax-node-text
-  (lg-lens
-   (lambda (ref)
-     (setq ref (lg-syntax--ensure-ref ref))
-     (lg-syntax-node-text-of (lg-syntax-ref-adapter ref)
-                             (lg-syntax-ref-buffer ref)
-                             (lg-syntax-ref-node ref)))
-   (lambda (ref replacement)
-     (lg-syntax-set-node-text replacement ref)))
+  (lg-mark-impure
+   (lg-lens
+    (lambda (ref)
+      (setq ref (lg-syntax--ensure-ref ref))
+      (lg-syntax-node-text-of (lg-syntax-ref-adapter ref)
+                              (lg-syntax-ref-buffer ref)
+                              (lg-syntax-ref-node ref)))
+    (lambda (ref replacement)
+      (lg-syntax-set-node-text replacement ref))))
   "Lens focusing syntax node text from a syntax ref.")
+
+(defconst lg-syntax-node-children-list
+  (lg-mark-impure
+   (lg-lens
+    (lambda (ref)
+      (setq ref (lg-syntax--ensure-ref ref))
+      (let* ((buffer (lg-syntax-ref-buffer ref))
+             (adapter (lg-syntax-ref-adapter ref))
+             (node (lg-syntax-ref-node ref))
+             (children (lg-syntax-node-children adapter buffer node)))
+        (mapcar (lambda (child)
+                  (make-lg-syntax-ref :buffer buffer :adapter adapter :node child))
+                children)))
+    (lambda (ref replacement)
+      (lg-syntax-set-node-children replacement ref))))
+  "Lens focusing node children as a list of syntax refs.")
 
 (defun lg-syntax-set-node-text (text ref)
   "Replace REF node text with TEXT through the effect system.
@@ -229,6 +282,17 @@ Return updated syntax ref."
   (lg-syntax-set-node-text
    (funcall fn (lg-view lg-syntax-node-text ref))
    ref))
+
+(defun lg-syntax-set-node-children (children ref)
+  "Replace REF children with CHILDREN through the effect system.
+CHILDREN must be syntax refs with the same buffer/adapter. Return updated ref."
+  (setq ref (lg-syntax--ensure-ref ref))
+  (unless (listp children)
+    (error "Expected list of child refs"))
+  (lg-run-effect
+   (lg-effect-perform
+    (make-lg-syntax-op-node-children-set :ref ref :children children))
+   (lg-syntax-ref-buffer ref)))
 
 (provide 'looking-glass-syntax)
 
