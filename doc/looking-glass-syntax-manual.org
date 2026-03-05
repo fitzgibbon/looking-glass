@@ -110,23 +110,28 @@ The same source can be transformed in several focused stages while staying insid
   (let* ((buffer (current-buffer))
          (root (lg-syntax-node-ref-at-point 1))
          (children (lg-compose root lg-syntax-node-children-list))
-         ;; Stage 1: insert by slicing the child list.
-         (first-child (lg-view! (lg-compose children (lg-nth 0)) buffer))
-         (_ (lg-set! (lg-compose children (lg-slice 1 1))
-                     (list first-child)
-                     buffer))
-         ;; Stage 2: retarget one node's text.
-         (_ (lg-set! (lg-compose children
-                                (lg-nth 1)
-                                lg-syntax-node-text)
-                     "bar"
-                     buffer))
-         ;; Stage 3: bulk-transform direct children.
-         (_ (lg-over! (lg-compose root
-                                  lg-syntax-node-ref-children
-                                  lg-syntax-node-text)
-                      #'upcase
-                      buffer)))
+         (program
+          (lg-effect-bind
+           ;; Stage 1: insert by slicing the child list.
+           (lg-effect-view-of (lg-compose children (lg-nth 0)))
+           (lambda (first-child)
+             (lg-effect-bind
+              (lg-effect-set-of (lg-compose children (lg-slice 1 1))
+                                (list first-child))
+              (lambda (_)
+                (lg-effect-bind
+                 ;; Stage 2: retarget one node's text.
+                 (lg-effect-set-of (lg-compose children
+                                              (lg-nth 1)
+                                              lg-syntax-node-text)
+                                   "bar")
+                 (lambda (_)
+                   ;; Stage 3: bulk-transform direct children.
+                   (lg-effect-over-of (lg-compose root
+                                                  lg-syntax-node-ref-children
+                                                  lg-syntax-node-text)
+                                      #'upcase)))))))))
+    (lg-run-effect program buffer)
     (buffer-string)))
 #+end_src
 
