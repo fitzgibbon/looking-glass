@@ -1,0 +1,370 @@
+#+TITLE: Functional Code Review: looking-glass (full repository)
+#+DATE: 2026-07-25
+#+OPTIONS: toc:2
+
+* Review round context
+
+- Round :: 1 (no prior review threads found)
+- Baseline review :: none (round 1)
+- Focus mode :: full repository audit (entire repo on ~main~, not a diff)
+- Commit reviewed :: ~01647a7~ (clean working tree)
+
+* Context used
+
+- Target :: local repo, 18 files, ~3,470 lines (no PR; entire codebase)
+- Ticket :: not provided — acceptance criteria inferred from ~AGENTS.md~ and ~README.org~
+- Docs read :: ~README.org~, ~AGENTS.md~, ~plan.org~, both org manuals, all scripts and workflows
+- Specialists run :: Domain Expert, Tech Debt, Architect, Change Impact — each ran the test
+  suite and byte-compiler, and confirmed every reported bug with a batch-mode repro before
+  reporting
+
+* File coverage matrix
+
+All 18 files were reviewed by all four specialists (each returned a complete per-file
+checklist; no file was missing from any list, so no follow-up pass was needed).
+
+| File                     | Domain    | Tech Debt | Architect | Impact | Findings                                |
+|--------------------------+-----------+-----------+-----------+--------+-----------------------------------------|
+| looking-glass.el         | 11        | 12        | 13        | 8      | most findings below                     |
+| looking-glass-regex.el   | 1         | 4         | 3         | 3      | FCR-003/004/008/026/028                 |
+| *-pkg.el (both)          | none      | 1         | none      | 1      | FCR-016/034                             |
+| test/* (3 files)         | gaps      | 2         | 2         | 2      | FCR-030 + gaps under FCR-001/003/005    |
+| README.org / manuals     | 4         | 3         | 3         | 4      | FCR-003/005/015/022                     |
+| AGENTS.md / plan.org     | 1         | 2         | none      | none   | FCR-032/039                             |
+| scripts/ (4 files)       | none      | 3         | none      | 3      | FCR-011/016/038                         |
+| .github/workflows/ (2)   | none      | 2         | none      | 1      | FCR-021/029                             |
+
+* Summary
+
+The library is genuinely well built at its core: a coherent profunctor-dictionary encoding
+with uniform composition across all optic kinds, a consistent tagged-Maybe design for
+nil-disambiguation, open ~cl-defgeneric~ extension points proven by tests, and randomized
+law-based tests — all 51 pass, and all three README examples reproduce exactly. However, the
+review found *two critical and three high-severity verified bugs*, all in documented public
+API and all invisible to the current test suite: the composable index-filtering combinators
+have never worked, the JSON optic silently corrupts documents under non-default
+configurations, ~lg-utf8~ silently no-ops on ASCII (making a shipped manual example wrong),
+regex optics corrupt callers' global match data, and the ~lg>>~ pipeline operator composes in
+the direction opposite to its documentation. A recurring theme: the bugs live exactly where
+test coverage stops, and several project rules in ~AGENTS.md~ (documented law violations, no
+aliases, everything tested) are violated by the code itself.
+
+* Finding lifecycle
+
+Round 1: every finding below is ~status: new~, ~first_seen_round: 1~; no thread URLs or author
+responses exist. IDs ~FCR-001~ through ~FCR-040~ are assigned fresh and are stable for future
+rounds. Every bug listed was runtime-verified by at least one specialist; nothing below is
+speculative.
+
+* Requirements coverage
+
+Inferred criteria — no formal acceptance criteria existed; confirm with the repo owner.
+
+| Criterion (from AGENTS.md / README)        | Status  | Evidence                                                                                                                                                                             |
+|--------------------------------------------+---------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Optics fully pure, no side effects         | Partial | Setters copy correctly (mutation audit clean across all containers), but regex optics mutate global match data (FCR-004)                                                             |
+| Optic laws followed; violations documented | Missing | Only ~lg-unmaybe~ documented; verified undocumented law breaks in ~lg-slice~, ~lg-number-string~, ~lg-utf8~, duplicate-key ~lg-at~, JSON list configs; ~laws.org~ missing (FCR-022) |
+| All features have working tests            | Partial | 51/51 pass with good randomized law tests, but ~lg>>~/~lg<<~, composed index predicates, list-shaped JSON, ASCII ~lg-utf8~, and ~15 public functions are untested (FCR-030)          |
+| Documentation kept up to date              | Partial | Dead ~laws.org~ reference in README + manual; regex manual example produces wrong output (FCR-003); AGENTS.md mandates a removed effect system (FCR-032)                             |
+| README examples work as shown              | Met     | All three executed verbatim in batch Emacs; output matches exactly                                                                                                                    |
+
+* Bugs (must fix)
+
+** FCR-001 · Critical · ~lg-indices~/~lg-ifiltered~ never receive a real index
+
+Composable index filtering has never worked.
+
+- Where :: ~looking-glass.el:1068-1079~; root cause ~looking-glass.el:435-444~
+  (~lg--indexed-star-profunctor~ discards the incoming index at every combinator boundary)
+- What :: The predicate is always called with the ~lg-no-index~ sentinel, in every composition
+  order. Numeric predicates crash (~wrong-type-argument integer-or-marker-p lg-no-index~);
+  tolerant predicates silently drop every focus.
+- Why it matters :: Documented public API (the manual advertises both) that returns wrong
+  results or crashes on first real use. The existence of hand-rolled
+  ~lg-indexed-list-filtered~/~lg-indexed-list-indices~ workarounds suggests this was known.
+  Worse, the one existing test (~core-test.el:345~) asserts the predicate receives
+  ~lg-no-index~ — the defect is codified as expected behavior.
+- Verified :: ~(lg-iset (lg-compose-indexed lg-indexed-list (lg-indices #'cl-evenp)) 'X '(a b c d))~
+  crashes; an instrumented predicate observed ~(lg-no-index lg-no-index lg-no-index)~.
+  Raised independently by all four specialists.
+- Fix :: Thread the incoming index through ~:wander~ (and ideally ~:dimap~/~:first~/~:right~)
+  so predicates see real indices — this also unlocks FCR-012 — or delete both combinators in
+  favor of the working container-specific variants and update the manual. Add composed-index
+  tests either way.
+
+** FCR-002 · Critical · JSON normalization guesses container kind and corrupts documents
+
+Applies to list-shaped configurations of ~lg-json-parse-with~.
+
+- Where :: ~looking-glass.el:166-250~ (~lg--json-normalize-from-parser~ /
+  ~lg--json-normalize-for-serializer~), public via ~lg-json-parse-with~ (line 252)
+- What :: With ~array-type 'list~ (or alist/plist objects), heuristics misfire:
+  ~[true,false]~ round-trips through an /identity/ ~lg-over~ to ~{"t":false}~ (array silently
+  becomes an object, boolean untagged); ~{}~ and ~[]~ both become ~null~; nested arrays
+  ~[[1,2],[3,4]]~ crash with ~wrong-type-argument symbolp 1~.
+- Why it matters :: ~lg-over optic #'identity~ must be identity (traversal law); instead it
+  corrupts or crashes legal, common JSON. Anyone persisting the output corrupts data — the
+  worst failure class. The default ~lg-json-parse~ (hash-table/array) is unaffected and
+  round-trips correctly (verified).
+- Verified :: All four corruption outputs reproduced in batch Emacs. Raised by Domain Expert,
+  Architect, and Change Impact independently.
+- Fix :: Stop inferring container kind per-value — the constructor statically knows
+  ~object-type~/~array-type~; thread them into both normalizers and dispatch on them (a
+  shift-left-to-construction-time fix). Alternatively restrict ~lg-json-parse-with~ to
+  unambiguous representations and signal on the rest. Add round-trip tests for every
+  supported type combination.
+
+** FCR-003 · High · ~lg-utf8~ silently no-ops on pure-ASCII bytes
+
+Prism law broken; the regex manual's own example produces wrong output.
+
+- Where :: ~looking-glass-regex.el:50-54~ (~lg-regex--utf8-bytes-p~), ~:250-266~;
+  ~doc/looking-glass-regex-manual.org:85-92~
+- What :: ~detect-coding-string~ returns ~undecided~ for ASCII, failing the ~utf-8~ base
+  check, so every ASCII-only bytestring fails to match. ~preview (review "hello")~ returns
+  ~lg-nothing~. The manual's "Composition patterns" example returns its input /unchanged/
+  instead of the documented upcased output.
+- Verified :: All repros run; the existing test only uses a non-ASCII snowman string, which
+  is why CI is green. Raised by Domain Expert and Change Impact.
+- Fix :: Drop the ~detect-coding-string~ gate — the decode/re-encode round-trip check already
+  rejects invalid UTF-8 (verified against ~#xC3 #x28~ and ~#xff #xff~) — or also accept
+  ~undecided~/~us-ascii~. Add an ASCII round-trip test.
+
+** FCR-004 · High · Regex optics clobber the caller's global match data
+
+- Where :: ~looking-glass-regex.el:56-74~, ~:103-116~ — bare ~string-match~ loops; no
+  ~save-match-data~ anywhere in the file
+- What :: Every ~lg-preview~/~lg-over~ through any regex optic mutates global match data. A
+  caller interleaving an optic call between their own ~string-match~ and ~match-string~ gets
+  corrupted positions.
+- Why it matters :: Directly contradicts the library's headline purity contract, and will
+  surface as action-at-a-distance bugs in /users'/ code, not this repo's tests. Verified:
+  caller's ~(match-data)~ changed from ~(6 11 6 9)~ to ~(4 7)~ after an unrelated
+  ~lg-preview~. Raised by Architect and Change Impact.
+- Fix :: Wrap span collection (or ~lg-regex--with-options~) in ~save-match-data~; add a
+  regression test asserting preservation.
+
+** FCR-005 · High · ~lg>>~ composes in the opposite direction from its documentation
+
+The manual teaches the broken direction.
+
+- Where :: ~looking-glass.el:676-693~; ~doc/looking-glass-manual.org:41~
+- What :: ~lg-compose~ already drills left-to-right in data terms (as the README relies on).
+  ~lg>>~, documented "compose from left to right", reverses its arguments, so the natural
+  pipeline reading fails: ~(lg>> lg-json-parse (lg-ix "name"))~ errors trying to apply
+  ~lg-ix~ to the raw string. When the swapped order happens to type-check, the failure is
+  silent. Neither ~lg>>~ nor ~lg<<~ has a single test.
+- Verified :: Both error repros run. Raised by Domain Expert and Change Impact.
+- Fix :: Make ~lg>>~ mean data-flow order (i.e., alias of current ~lg-compose~) and ~lg<<~
+  the reverse — AGENTS.md explicitly permits the breaking change — then fix both docstrings
+  and the manual, and add direction tests.
+
+** FCR-006 · Medium · ~lg-left-o~/~lg-right-o~ prisms crash on non-cons input
+
+~looking-glass.el:1946-1962~ via ~lg-left-p~/~lg-right-p~ calling ~car~ on arbitrary values.
+~(lg-preview lg-right-o 5)~ signals ~wrong-type-argument~ where every other prism in the
+library degrades to ~lg-nothing~. Verified on ~5~ and ~"hi"~. Guard with ~lg-either-p~
+(already exists, line 98) or ~car-safe~. /(Architect)/
+
+** FCR-007 · Medium · ~lg-review~/~lg-re~ swallow all errors, misreport them as capability errors
+
+~looking-glass.el:983-986~, ~:1739-1744~. The blanket ~condition-case~ replaces an optic's
+own actionable validation message (e.g. "Expected number focus") with the false "Optic does
+not support review", making user-defined prism errors undiagnosable. Verified. Detect
+missing capability structurally (check the profunctor slot) instead of catching everything.
+/(Architect)/
+
+** FCR-008 · Medium · ~:search-whitespace-regexp~ regex option is inert
+
+~looking-glass-regex.el:37-39~, advertised in five docstrings and the manual. The variable is
+only consulted by isearch, never by ~string-match~. Verified: binding it has no effect;
+~:search-spaces-regexp~ works. Remove it (breaking removal is permitted) or map it onto
+~search-spaces-regexp~; add a test. /(Tech Debt)/
+
+** FCR-009 · Low · ~lg-ix~/~lg-at~ on odd-length non-keyed lists crash with an internal dispatch error
+
+~looking-glass.el:1149-1154~ plus generic dispatch. ~(lg-preview (lg-ix :k) '(1 2 3))~
+signals ~cl-no-applicable-method lg--list-ix-get nil ...~. Return ~lg-nothing~ (affine
+semantics) or signal a descriptive domain error. /(Domain Expert, Change Impact)/
+
+** FCR-010 · Low · ~lg-at~ deletion on duplicate-key plists removes only the first binding
+
+Breaks the at-lens law. ~looking-glass.el:1268-1297~.
+~(lg-set (lg-at :k) lg-nothing '(:k 1 :k 2 ...))~ leaves ~:k 2~ visible, so get-after-delete
+returns a value. Verified. Remove all matching bindings on ~lg-nothing~, or document the
+unique-key assumption. /(Domain Expert, Change Impact)/
+
+** FCR-011 · Low · Release dry-run prescribes ~--notes-file CHANGELOG.md~, which doesn't exist
+
+~scripts/dry-run-publish-release.sh~ last line; ~git ls-files~ has no CHANGELOG.md. The
+dry-run "passes" while certifying a command that fails the moment it is promoted to a real
+release. Use ~--generate-notes~ or add the changelog. /(Tech Debt, Change Impact)/
+
+* Design concerns (should discuss)
+
+** FCR-012 · Medium · Composed indexed optics irrecoverably discard all but the innermost index
+
+Same root cause as FCR-001 (~looking-glass.el:435-444~).
+~(lg-compose-indexed lg-indexed-list lg-indexed-list)~ over ~'((10 20) (30))~ yields
+~((0 . 10) (1 . 20) (0 . 30))~ — outer indices gone, with no combinator to recover them and
+no documentation of the innermost-only semantics. Fixing FCR-001's index threading makes an
+index-combining composition expressible. /(Architect)/
+
+** FCR-013 · Medium · Indexed/unindexed composition fails at use time with a hostile raw type error
+
+~lg-compose2~/~lg-compose-indexed2~ (~looking-glass.el:667-709~) do no validation, so mixing
+worlds dumps compiled-closure bytes far from the composition site instead of naming the fix
+(~lg-as-indexed~/~lg-unindexed~). Validate at composition time with a targeted message.
+/(Architect)/
+
+** FCR-014 · Medium · Opposite failure philosophies for read-only vs write-only optics
+
+~lg-set~ through a ~lg-getter~ silently no-ops (lost update masked as success,
+~looking-glass.el:1050-1058~), while ~lg-view~ through a review signals (~:1613-1622~, with
+an error message that says "view" even when the operation was ~set~). The silent write no-op
+is the more dangerous case yet got the lenient treatment. Pick one philosophy — preferably
+signal on set-through-getter — and fix the review error text. /(Architect)/
+
+** FCR-015 · Medium · ~lg-slice~ breaks all lens laws for length-changing writes, undocumented
+
+~looking-glass.el:1917-1924~. Verified: get-set and set-set both fail after insertion. The
+behavior is intended (commit ~bad0935~; the README demos it), but AGENTS.md requires
+documented law breaks and the docstring/manual say "lens" with no caveat. Document "lawful
+only for length-preserving writes" and stop calling it a lens. /(Domain Expert, Change Impact)/
+
+** FCR-016 · Medium · MELPA two-package publishing strategy has unresolved holes
+
+Committed ~-pkg.el~ files (MELPA generates its own; default ~:files~ globs would sweep each
+package's files into the other), the documented ~melpa-release~ branch would hold info files
+but not sources (or vice versa), the echoed ~git checkout --orphan~ + ~git add *.info dir~
+procedure would commit the entire staged tree if ever executed verbatim, and version ~0.1.0~
+has no git tag for MELPA Stable. Write the two recipes with explicit ~:files~ now and decide
+the branch layout before the dry-runs are promoted. /(Change Impact, Tech Debt)/
+
+** FCR-017 · Low · Alias proliferation contradicts AGENTS.md's own no-aliases rule
+
+~lg-map-of~ = ~lg-over~, ~lg-first-of~ = ~lg-preview~, ~lg-hash-key~ = ~lg-ix~,
+~lg-hash-key-at~ = ~lg-at~, ~lg<<~ = ~lg-compose~, ~lg-worded-regexp~ = ~lg-regex-all~, etc.
+Most are untested and unmentioned in any manual. Collapse to one canonical name per
+operation. /(Tech Debt, Architect)/
+
+** FCR-018 · Low · Two competing Maybe encodings
+
+The library's own tag is ~lg-just~, but ~lg-just-o~ (~looking-glass.el:1936-1944~) defines a
+second encoding tagged bare ~just~, and its docstring describes a third form ~(just VALUE)~
+that matches neither. Users composing ~lg-just-o~ against ~lg-preview~ results get silent
+non-matches. Retag to the library encoding or document the separate domain.
+/(Architect, Tech Debt)/
+
+** FCR-019 · Low · Container-kind classification traps undocumented
+
+The empty list classifies as an alist (~cl-every~ is vacuously true), so
+~(lg-set (lg-at :k) (lg-just 1) nil)~ builds an alist even when the caller means a plist;
+even-length lists of conses always classify as alists. Document the tie-breaking rules or
+add kind-explicit ~lg-plist-at~/~lg-alist-at~. /(Tech Debt, Domain Expert)/
+
+** FCR-020 · Low · ~lg-view~ docstring promises "exactly one expected focus"
+
+But it silently returns the first of many: ~looking-glass.el:1707-1718~;
+~(lg-view lg-list '(1 2 3))~ returns ~1~. Reword to "first focus" or check for a second
+focus and signal. /(Architect, Domain Expert)/
+
+** FCR-021 · Low · The only push/PR gate builds manuals before running tests
+
+~manuals-ci.yml~: a doc-export failure masks the test result, and the workflow name hides
+that it is the test gate. Split or reorder the jobs. /(Change Impact)/
+
+* Edge cases
+
+Covered above: ASCII bytes (FCR-003), list-shaped JSON arrays/empty containers/nested arrays
+(FCR-002), non-cons Either input (FCR-006), odd-length lists (FCR-009), duplicate plist keys
+(FCR-010), empty-list container classification (FCR-019).
+
+Explicitly verified /safe/: zero-width regex matches (span pre-collection prevents offset
+skew), mixed-Unicode line separators, multibyte text through ~lg-worded~/~lg-regex-all~,
+malformed JSON (clean prism non-match), invalid regexps (clear signal at use time).
+
+* Regression risk and downstream impact
+
+- Silent data corruption (worst class) :: FCR-002 for anyone persisting JSON with
+  non-default types; FCR-003 for any UTF-8 pipeline whose payload happens to be ASCII.
+- State corruption in consumers' code :: FCR-004 affects essentially every real Emacs Lisp
+  consumer, since mixing optics with ordinary regex code is the norm.
+- Fails on first documented use :: FCR-001 and FCR-005 — users following the shipped manuals
+  hit them immediately.
+- Mutation audit clean :: no optic mutates its input across lists, vectors, strings, plists,
+  alists, or hash tables (verified by repro). No security surface: no network, file writes,
+  or evaluation of untrusted input.
+
+* Tech debt
+
+| ID      | Sev    | Finding                                                                                                                                                                                                              |
+|---------+--------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| FCR-024 | Medium | Quadratic ~(append result ...)~ accumulation in 6+ loops plus the ~#'append~ fold monoid makes every read path O(n^2); ~lg-preview~ materializes all focuses to take the first. The dead Forget profunctor would fix previews. |
+| FCR-025 | Medium | Seven public functions are 1:1 delegates to ~lg--~ twins — a remnant of the removed effect system's ~allow-impure~ flag. Inline and delete.                                                                            |
+| FCR-026 | Medium | ~lg-regex--traverse-list~ is a verbatim 17-line copy of core's private ~lg--traverse-list~. Promote a public ~lg-traverse-list~ and delete the copy.                                                                   |
+| FCR-027 | Medium | Twin 40-line JSON normalizer walkers duplicating fragile heuristics written a third time as ~lg--list-ix-kind~ — fix alongside FCR-002.                                                                                |
+| FCR-028 | Medium | ~lg-regex-match~/~lg-regex-group~ and ~lg-regex-all~/~lg-regex-all-groups~ are ~20-line near-duplicates differing only in a literal ~0~.                                                                               |
+| FCR-029 | Medium | CI never byte-compiles, checkdocs, or package-lints — the 13 existing compile warnings are invisible, and a hard compile error would ship.                                                                             |
+| FCR-030 | Medium | Untested public API: all six ~lg-clone-*~, ~lg-compose-indexed~ composition itself, ~lg-map-of~/~lg-for-of~, ~lg-hash-key*~, several monoids, both regex space options — one composed-index test would have caught FCR-001. |
+| FCR-031 | Medium | ~lg-required~ references ~lg-non-nil~ defined 645 lines later — free-variable warning, load-order fragility.                                                                                                            |
+| FCR-032 | Medium | AGENTS.md still mandates the "monadic effect system" deleted in commit ~3504131~ — contributors are directed to infrastructure that no longer exists.                                                                    |
+| FCR-033 | Low    | Dead encoding machinery (~lg-bazaar~, Forget, function profunctor, unreachable indexed-profunctor branches) kept alive only by tests reaching into ~lg--~ internals; the comment at lines 717-724 describes it as in use.  |
+| FCR-034 | Low    | Package hygiene: no ~URL:~ headers (package-lint error, MELPA requirement), version ~0.1.0~ duplicated in five places, redundant ~cl-lib~ dep.                                                                          |
+| FCR-035 | Low    | No ~.gitignore~; stale ~.elc~ files sit untracked in the root (one specialist's first repro actually loaded the stale ~.elc~ — a real hazard).                                                                          |
+| FCR-036 | Low    | Undocumented prism-law caveats: ~lg-number-string~ (non-canonical numerals), ~lg-symbol-string~ (uninterned symbols), ~lg-json-parse~ (formatting normalization, e.g. ~1e2~ -> ~100.0~ — verified). One shared caveat section covers all three. |
+| FCR-037 | Low    | 13 byte-compile + ~30 checkdoc warnings (unused ~value~/~kind~/~source~ args, undocumented ~cl-defmethod~ s, two >80-col docstrings).                                                                                   |
+| FCR-038 | Low    | The 3-line test incantation is copy-pasted in 4 places (add ~scripts/run-tests.sh~); ~build-manuals.sh~ suppresses ~install-info~ output while ~set -e~ still aborts on its failure — a hard failure with no diagnostic.  |
+| FCR-039 | Info   | ~plan.org~ is title-only after the "no plan" commit, making the AGENTS.md "pick the first item" workflow a no-op. Fine if the backlog is genuinely empty; this review's fixes are candidates to repopulate it.            |
+| FCR-040 | Info   | Regex optics force ~case-fold-search~ nil by default (deliberate and tested, but surprising — document prominently); Emacs 28.1 floor is otherwise sound, though ~json-parse-string~ needs a libjansson build on 28 — consider a load-time ~json-available-p~ check. |
+
+* Suggested tickets (feature gaps — not defects)
+
+** FCR-022 · Write ~laws.org~ (or a "Laws and caveats" manual section)
+
+Raised by all four specialists. Both ~README.org:67~ and ~doc/looking-glass-manual.org:187~
+reference ~laws.org~; the file does not exist. It is the designated home for exactly the
+undocumented law breaks found in this review (FCR-010/015/036, JSON formatting,
+innermost-index semantics, getter set-no-op).
+
+- Acceptance criteria :: file exists (or references removed and content folded into the
+  manual); every optic with a known law deviation is listed with a repro; README and manual
+  references resolve.
+
+** FCR-023 · Extend ~lg-slice~ beyond lists (or close the generic)
+
+~lg-slice-get~/~lg-slice-set~ are ~cl-defgeneric~ s but only list methods exist;
+~(lg-view (lg-slice 0 1) [1 2])~ fails with a raw no-applicable-method error while sibling
+~lg-nth~ covers list/vector/string/bool-vector.
+
+- Acceptance criteria :: vector and string methods with tests, or plain functions with a
+  clear lists-only error.
+
+* Suggestions (non-blocking)
+
+- Fixing FCR-001's index threading and FCR-012 together is one change to
+  ~lg--indexed-star-profunctor~; do them as a unit with composed-index tests.
+- Wiring the dead Forget profunctor into the preview path fixes FCR-024's short-circuit and
+  FCR-033's dead code simultaneously.
+- Add ~byte-compile-error-on-warn~, checkdoc, and package-lint steps to CI once
+  FCR-031/037 are cleaned — that locks in the fixes.
+
+* Verdict
+
+- [ ] Ready to merge/publish
+- [X] Needs major rework in two focused areas — the indexed-optics index threading
+  (FCR-001/012) and the JSON normalizers (FCR-002) need redesign, not patches;
+  FCR-003/004/005 are small, verified one-line-class fixes
+- [ ] Needs minor fixes only
+
+The foundation is strong — the profunctor encoding, nil-disambiguation design, extension
+points, and law-based test style all hold up under adversarial checking, and everything that
+passed the mutation and edge-case audits passed cleanly. But with two critical
+silent-corruption bugs and three high-severity bugs in documented API (two of which make
+shipped manual examples wrong), this should not go to MELPA until the Bugs section is
+cleared. The single highest-leverage follow-up: add tests exactly where the manuals make
+promises — composed indexed optics, ~lg>>~ direction, list-shaped JSON, and ASCII UTF-8 —
+since all five serious bugs sat precisely in documented-but-untested territory.
+
+Consensus across: Domain Expert, Tech Debt, Architect, Change Impact — all 51 existing tests
+pass; every bug above was confirmed by runtime repro before inclusion.
