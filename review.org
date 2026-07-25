@@ -145,6 +145,110 @@ warnings-as-errors; manual build verified.
 Suite after low/informational fixes: 70/70 tests pass; byte-compile and
 checkdoc clean.
 
+* Round 2 — re-review (HEAD ~ec7d827~)
+
+Four specialists re-reviewed the full repository, independently re-running
+the original round-1 failure repros and auditing the three fix commits
+(~554d5b9~, ~2e11ce6~, ~ec7d827~).
+
+** Remediation verification
+
+*All 40 round-1 findings were independently confirmed fixed* — every
+original failure scenario was re-run and none regressed. Highlights: the
+JSON round-trip matrix passed 24/24 (and 121/121 in the impact reviewer's
+adversarial suite); ~lg-utf8~ additionally rejects overlong encodings,
+CESU surrogates, and out-of-range sequences; match-data preservation held
+across ten entry points; the release pipeline reproduced end-to-end from a
+fresh checkout, including verified pass/fail semantics of the new CI
+checkdoc gate; mutation audits on all new code paths were clean.
+
+** Net-new findings (FCR-041..FCR-057) and their remediation
+
+Two of the round-1 fixes introduced regressions, and one High-severity
+round-1 miss surfaced. All round-2 findings were fixed in the commit that
+adds this section; each was verified by a new regression test.
+
+- FCR-041 :: High BUG (introduced by FCR-024's fix; found by Change
+  Impact) — the closure-composition fold monoid crashed every read path
+  with ~excessive-lisp-nesting~ above ~795 focuses. *Fixed*: collection
+  now builds a leaf/concatenation tree with O(1) append and an iterative
+  flatten; a 10,000-element read-path test guards it.
+- FCR-042 :: High BUG (round-1 miss; found by Domain Expert) — ~lg-at~
+  silently *deleted* the key when given a raw non-maybe value, because
+  the validating default method was shadowed by every container
+  specialization. *Fixed*: validation moved into ~lg-at~'s setter
+  (~lg--check-maybe~); tests cover plist/alist/hash-table.
+- FCR-043 :: Medium BUG (introduced by FCR-040's fix; found by Tech Debt
+  and Change Impact) — the ~json-available-p~ check ran at load time via
+  the ~lg-json-parse~ defconst, so the whole package failed to load on
+  JSON-less Emacs builds. *Fixed*: availability is checked when the
+  prism is used; a load test with ~json-available-p~ stubbed nil guards
+  it.
+- FCR-044 :: Medium BUG (residual gap in FCR-002; found by Domain Expert
+  and Change Impact) — NULL-OBJECT/FALSE-OBJECT sentinels colliding with
+  document content (numbers, strings, ~t~, each other) still corrupted
+  documents. *Fixed*: sentinels must be distinct non-~t~ symbols,
+  validated at construction; laws.org updated.
+- FCR-045 :: Medium BUG (introduced by FCR-030's fix; found by Domain
+  Expert) — ~lg-clone-affine~ on a multi-focus optic broadcast the first
+  focus to every position (identity edits corrupted data). *Fixed*: it
+  now signals when the optic has more than one focus.
+- FCR-046 :: Medium DESIGN (introduced by FCR-019's fix; flagged by all
+  four reviewers) — the new docstring claimed ~lg-plist-key~ /
+  ~lg-alist-key~ avoid kind inference when they only pinned TESTFN.
+  *Fixed*: both now genuinely fix the container kind, and kind-pinned
+  ~lg-plist-at~/~lg-alist-at~ lenses were added (plist insertion into
+  nil now possible); cross-shape tests added.
+- FCR-047 :: Medium TECH_DEBT (round-1 miss; found by Tech Debt) — the
+  ~lg-filtered~/~lg-ifiltered~/~lg-indices~ family breaks the traversal
+  fusion law for predicate-changing writes, undocumented, and laws.org's
+  indexed-optics sentence contradicted them. *Fixed*: caveat added to
+  laws.org and all three docstrings; the indexed law statement is scoped
+  to container traversals.
+- FCR-048 :: Low DESIGN (Architect) — ~lg-icompose-with~ contract gaps:
+  pass-through INNER double-combines, pass-through OUTER at top level
+  passes the ~lg-no-index~ sentinel, binary-only arity, per-outer-focus
+  re-interpretation cost. *Fixed*: all documented in the docstring.
+- FCR-049 :: Low DESIGN (Architect, Domain Expert) — unsupported
+  containers hit raw ~cl-no-applicable-method~ errors. *Fixed*:
+  descriptive default methods for ~lg-slice~, ~lg-nth~, ~lg-ix~, and
+  ~lg-at~ generics.
+- FCR-050 :: Low TECH_DEBT (Tech Debt) — ~lg-iview~ kept the "exactly
+  one" wording FCR-020 fixed in ~lg-view~ and never documented its
+  ~(INDEX . FOCUS)~ return shape. *Fixed*.
+- FCR-051 :: Low TECH_DEBT (Architect) — ~lg-review~/~lg-re~ re-signals
+  discarded which capability was missing. *Fixed*: original payload
+  chained into the signal data.
+- FCR-052 :: Low TECH_DEBT (Architect) — ~lg-indexed-list-filtered~ /
+  ~lg-indexed-list-indices~ semantics vs the now-working composition
+  were undocumented. *Fixed*: documented as index-generating
+  conveniences that ignore the enclosing index.
+- FCR-053 :: Low TECH_DEBT (Tech Debt) — ~lg-monoid-list~ was unused,
+  untested, and reinstated the quadratic behavior FCR-024 removed.
+  *Fixed*: deleted.
+- FCR-054 :: Low TECH_DEBT (Tech Debt) — the ~lg-nth~ bounds check was
+  duplicated eight times next to the shared slice helper. *Fixed*:
+  extracted ~lg--check-nth-bounds~.
+- FCR-055 :: Info (Tech Debt) — dead identity conditional in
+  ~lg-json-parse-with~'s null binding. *Fixed*.
+- FCR-056 :: Info (Architect, Tech Debt) — slice law caveat still said
+  "the list's length" after vector/string support. *Fixed* in docstring
+  and laws.org.
+- FCR-057 :: Info (Change Impact) — breaking-change record: the round-2
+  behavior-change inventory flagged the ~lg-indexed~ WANDER-FN signature
+  change (now ~(WANDER-FN index iafb source applicative)~) as the one
+  breaking change not called out anywhere; it is hereby recorded, along
+  with the two regressions above (both now fixed).
+
+** Round 2 verdict
+
+The round-1 remediation is genuine and holds under adversarial
+re-testing; the process finding is that three of the forty fixes shipped
+their own defects, all caught here and now fixed with regression tests.
+After round-2 remediation: 77/77 tests pass; byte-compile
+(warnings-as-errors) and checkdoc clean; manuals build; all documented
+examples verified.
+
 * Context used
 
 - Target :: local repo, 18 files, ~3,470 lines (no PR; entire codebase)

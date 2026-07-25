@@ -155,14 +155,19 @@ Signals when EITHER is not a tagged either value."
   "Map FN over VECTOR-VALUE preserving vector shape."
   (vconcat (mapcar fn (append vector-value nil))))
 
-(defun lg--json-validate-types (object-type array-type null-object)
-  "Signal unless OBJECT-TYPE, ARRAY-TYPE and NULL-OBJECT are distinguishable.
-Rejects configurations whose value representations overlap, since
-those cannot round-trip: alist/plist objects combined with list
-arrays, and list-shaped containers whose empty case collides with a
-nil NULL-OBJECT."
+(defun lg--json-require-native ()
+  "Signal unless this Emacs has native JSON support."
   (unless (json-available-p)
-    (error "Native JSON support is required for lg-json-parse-with"))
+    (error "Native JSON support is required for lg-json-parse-with")))
+
+(defun lg--json-validate-types (object-type array-type null-object false-object)
+  "Signal unless the JSON value representations are distinguishable.
+Rejects configurations that cannot round-trip: alist/plist
+OBJECT-TYPE combined with list ARRAY-TYPE; list-shaped containers
+whose empty case collides with a nil NULL-OBJECT; and NULL-OBJECT or
+FALSE-OBJECT sentinels that can collide with document content
+\(strings, numbers, t, containers, the `lg-true'/`lg-false' tags, or
+each other)."
   (unless (memq object-type '(hash-table alist plist))
     (error "Unsupported OBJECT-TYPE %S for lg-json-parse-with" object-type))
   (unless (memq array-type '(array list))
@@ -172,7 +177,16 @@ nil NULL-OBJECT."
   (when (and (or (memq object-type '(alist plist)) (eq array-type 'list))
              (null null-object))
     (error "JSON types %S/%S require a non-nil NULL-OBJECT"
-           object-type array-type)))
+           object-type array-type))
+  (unless (and (symbolp false-object) false-object
+               (not (memq false-object '(t lg-true))))
+    (error "FALSE-OBJECT must be a non-nil symbol other than t: %S"
+           false-object))
+  (unless (and (symbolp null-object)
+               (not (memq null-object '(t lg-true))))
+    (error "NULL-OBJECT must be a symbol other than t: %S" null-object))
+  (when (eq null-object false-object)
+    (error "NULL-OBJECT and FALSE-OBJECT must differ: %S" null-object)))
 
 (defun lg--json-normalize-from-parser (value object-type array-type false-object)
   "Normalize parser VALUE into the looking-glass JSON domain.
@@ -244,12 +258,17 @@ Only distinguishable configurations are accepted: alist/plist
 objects cannot be combined with list arrays, and any list-shaped
 container type requires a non-nil NULL-OBJECT (for example `:null'),
 because their empty representations would otherwise collide and the
-prism could not round-trip."
-  (let ((null-value (if (null null-object) nil null-object))
+prism could not round-trip.  NULL-OBJECT and FALSE-OBJECT must be
+distinct symbols that cannot collide with document content.
+
+Native JSON support is checked when the prism is used, not when it is
+constructed, so the package loads on JSON-less Emacs builds."
+  (let ((null-value null-object)
         (false-value (if (null false-object) lg-false false-object)))
-    (lg--json-validate-types object-type array-type null-value)
+    (lg--json-validate-types object-type array-type null-value false-value)
     (lg-prism
      (lambda (json-text)
+       (lg--json-require-native)
        (if (stringp json-text)
            (condition-case nil
                (lg-right
@@ -263,6 +282,7 @@ prism could not round-trip."
              (error (lg-left json-text)))
          (lg-left json-text)))
      (lambda (value)
+       (lg--json-require-native)
        (json-serialize
         (lg--json-normalize-for-serializer
          value object-type array-type false-value)
@@ -294,10 +314,6 @@ prism could not round-trip."
                      (lg-const-value wrapped-fn)
                      (lg-const-value wrapped-value))))
      :fmap (lambda (_fn wrapped-value) wrapped-value))))
-
-(defconst lg-monoid-list
-  (make-lg-monoid :empty nil :append #'append)
-  "Monoid for list concatenation.")
 
 (defconst lg-monoid-string
   (make-lg-monoid :empty "" :append #'concat)
@@ -638,7 +654,14 @@ wins.  Use `lg-icompose-with' to combine indices instead."
 COMBINE is called as (COMBINE outer-index inner-index) for each focus,
 where OUTER-INDEX is the index OUTER supplies and INNER-INDEX is the
 index INNER emits.  Plain `lg-compose-indexed' keeps only the
-innermost index."
+innermost index.
+
+OUTER should be index-producing.  When INNER is a pass-through
+combinator such as `lg-ifiltered', COMBINE receives the outer index
+twice; when OUTER is pass-through at top level, COMBINE receives the
+`lg-no-index' sentinel.  Composition is binary — nest calls to
+combine more than two levels.  INNER is re-interpreted once per outer
+focus, so cost grows with the outer focus count."
   (lg--check-indexed-optic outer)
   (lg--check-indexed-optic inner)
   (lg-compose-indexed2
@@ -787,12 +810,22 @@ BUILD maps b to t."
 
 (defun lg-clone-affine (optic)
   "Clone OPTIC as an affine traversal.
-Uses OPTIC's preview and set interpretations, so any optic with at
-most one focus clones faithfully; a multi-focus optic degrades to its
-first focus."
+Uses OPTIC's preview and set interpretations.  Signals when OPTIC
+focuses more than one value in a given source, since an affine
+traversal has at most one focus."
   (lg-affine
-   (lambda (source) (lg-preview optic source))
-   (lambda (source new-focus) (lg-set optic new-focus source))))
+   (lambda (source)
+     (let ((focuses (lg-to-list-of optic source)))
+       (when (cdr focuses)
+         (error "Cannot clone as affine: optic has %d focuses"
+                (length focuses)))
+       (if focuses (lg-just (car focuses)) lg-nothing)))
+   (lambda (source new-focus)
+     (let ((focuses (lg-to-list-of optic source)))
+       (when (cdr focuses)
+         (error "Cannot clone as affine: optic has %d focuses"
+                (length focuses)))
+       (lg-set optic new-focus source)))))
 
 (defun lg-clone-traversal (optic)
   "Clone OPTIC as a traversal."
@@ -941,11 +974,12 @@ Signals `lg-unsupported-capability' when OPTIC cannot be interpreted
 as a review.  Errors raised by the optic's own builder propagate
 unchanged."
   (let* ((profunctor (lg--tagged-profunctor))
-         (result (condition-case nil
+         (result (condition-case err
                      (lg--run-optic optic profunctor (make-lg-tagged :value value))
                    (lg-unsupported-capability
                     (signal 'lg-unsupported-capability
-                            (list "Optic does not support review"))))))
+                            (cons "Optic does not support review"
+                                  (cdr err)))))))
     (lg-tagged-value result)))
 
 (defconst lg-json-parse
@@ -1028,7 +1062,10 @@ Setter-like operations leave the source unchanged."
                 (funcall afb (funcall getter-fn source)))))))
 
 (defun lg-filtered (predicate)
-  "Traversal that focuses only values satisfying PREDICATE."
+  "Traversal that focuses only values satisfying PREDICATE.
+Law caveat: lawful only for predicate-preserving writes — when a
+write changes whether PREDICATE holds, successive `lg-over' calls do
+not fuse.  See laws.org."
   (lg-traversal
    (lambda (afb source applicative)
      (if (funcall predicate source)
@@ -1038,7 +1075,9 @@ Setter-like operations leave the source unchanged."
 (defun lg-ifiltered (predicate)
   "Indexed traversal that focuses only values satisfying PREDICATE.
 PREDICATE is called as (PREDICATE index focus), where INDEX is the
-index supplied by the enclosing optic (`lg-no-index' at top level)."
+index supplied by the enclosing optic (`lg-no-index' at top level).
+Shares `lg-filtered's law caveat: lawful only for predicate-preserving
+writes.  See laws.org."
   (lg-indexed
    (lambda (index iafb source applicative)
       (if (funcall predicate index source)
@@ -1053,7 +1092,9 @@ Compose after an index-producing optic, for example
 
 (defun lg-indexed-list-filtered (predicate)
   "Indexed list traversal focused by PREDICATE.
-PREDICATE is called as (PREDICATE index focus)."
+PREDICATE is called as (PREDICATE index focus).  Index-generating
+convenience equivalent to composing `lg-indexed-list' with
+`lg-ifiltered'; unlike `lg-ifiltered' it ignores any enclosing index."
   (lg-indexed
    (lambda (_index iafb source applicative)
      (lg--traverse-list-indexed
@@ -1065,7 +1106,9 @@ PREDICATE is called as (PREDICATE index focus)."
       source))))
 
 (defun lg-indexed-list-indices (predicate)
-  "Indexed list traversal focused by index PREDICATE."
+  "Indexed list traversal focused by index PREDICATE.
+Index-generating convenience equivalent to composing
+`lg-indexed-list' with `lg-indices'."
   (lg-indexed-list-filtered
    (lambda (index _focus)
      (funcall predicate index))))
@@ -1165,6 +1208,16 @@ Update KEY to VALUE in list SOURCE, comparing keys with TESTFN.")
   "List-backed map-like maybe update dispatch by KIND.
 Write tagged MAYBE at KEY in list SOURCE, comparing keys with TESTFN.")
 
+(cl-defmethod lg-ix-get (source _key &optional _testfn)
+  "Reject unsupported container SOURCE with a descriptive error."
+  (error "Unsupported container for lg-ix (expected plist, alist, or hash table): %S"
+         source))
+
+(cl-defmethod lg-ix-set (source _key _value &optional _testfn)
+  "Reject unsupported container SOURCE with a descriptive error."
+  (error "Unsupported container for lg-ix (expected plist, alist, or hash table): %S"
+         source))
+
 (cl-defmethod lg-ix-get ((source hash-table) key &optional _testfn)
   "Specialization of `lg-ix-get' for hash-table.
 SOURCE and KEY follow the generic."
@@ -1200,12 +1253,10 @@ SOURCE, KEY and VALUE follow the generic."
 SOURCE, KEY, VALUE and TESTFN follow the generic."
   (lg--list-ix-set (lg--list-ix-kind source) source key value testfn))
 
-(cl-defmethod lg-at-set (_source _key maybe &optional _testfn)
-  "Specialization of `lg-at-set' for the default case.
-MAYBE follows the generic."
-  (unless (or (lg-nothing-p maybe) (lg-just-p maybe))
-    (error "Expected tagged maybe value"))
-  (cl-call-next-method))
+(cl-defmethod lg-at-set (source _key _maybe &optional _testfn)
+  "Reject unsupported container SOURCE with a descriptive error."
+  (error "Unsupported container for lg-at (expected plist, alist, or hash table): %S"
+         source))
 
 (cl-defmethod lg-at-set ((source hash-table) key maybe &optional _testfn)
   "Specialization of `lg-at-set' for hash-table.
@@ -1240,7 +1291,8 @@ SOURCE, KEY and TESTFN follow the generic."
   "Specialization of `lg--list-ix-get' for `alist'.
 SOURCE, KEY and TESTFN follow the generic."
   (let ((cell (cl-find-if (lambda (entry)
-                            (funcall (or testfn #'equal) (car entry) key))
+                            (and (consp entry)
+                                 (funcall (or testfn #'equal) (car entry) key)))
                           source)))
     (if cell (lg-just (cdr cell)) lg-nothing)))
 
@@ -1281,7 +1333,9 @@ SOURCE, KEY, VALUE and TESTFN follow the generic."
   (let ((updated nil)
         (test (or testfn #'equal)))
     (mapcar (lambda (entry)
-              (if (and (not updated) (funcall test (car entry) key))
+              (if (and (not updated)
+                       (consp entry)
+                       (funcall test (car entry) key))
                   (progn
                     (setq updated t)
                     (cons (car entry) value))
@@ -1315,7 +1369,8 @@ KIND, SOURCE, KEY, MAYBE and TESTFN follow the generic."
         (if (lg-just-p (lg--list-ix-get kind source key test))
             (lg--list-ix-set kind source key (cdr maybe) test)
           (append source (list (cons key (cdr maybe)))))
-      (cl-remove-if (lambda (entry) (funcall test (car entry) key))
+      (cl-remove-if (lambda (entry)
+                      (and (consp entry) (funcall test (car entry) key)))
                     source))))
 
 (defun lg-affine (preview-fn set-fn)
@@ -1359,22 +1414,31 @@ positions is a plist; any other list signals.  Use `lg-plist-key' or
 Reading maps `lg-nothing' to nil and `(lg-just . VALUE)' to VALUE.
 Writing maps nil to `lg-nothing' and non-nil values to `(lg-just . VALUE)'.")
 
+(defun lg--check-maybe (maybe)
+  "Signal unless MAYBE is a tagged maybe value; return MAYBE."
+  (unless (or (lg-nothing-p maybe) (lg-just-p maybe))
+    (error "Expected tagged maybe value (`lg-nothing' or `lg-just'), got %S"
+           maybe))
+  maybe)
+
 (defun lg-at (key &optional testfn)
   "Lens focusing presence and value of KEY in keyed SOURCE.
 The focus shape is tagged maybe (`lg-nothing' or `(lg-just . VALUE)').
 Setting to `lg-nothing' removes KEY.
 Setting to `(lg-just . VALUE)' inserts or updates KEY; removal
 deletes every binding of KEY, including shadowed duplicates.
+Setting to anything that is not a tagged maybe signals.
 SOURCE can be plist, alist, or hash table.
 TESTFN applies to plist/alist key comparisons.
 
 Lists are classified by shape as described in `lg-ix'; insertion into
-an empty list builds an alist."
+an empty list builds an alist.  Use `lg-plist-at' or `lg-alist-at' to
+fix the container kind explicitly."
   (lg-lens
    (lambda (source)
      (lg-at-get source key testfn))
    (lambda (source maybe)
-     (lg-at-set source key maybe testfn))))
+     (lg-at-set source key (lg--check-maybe maybe) testfn))))
 
 (defun lg-over (optic fn source)
   "Apply FN over OPTIC focus in SOURCE."
@@ -1615,28 +1679,50 @@ BUILDER maps focus-domain values into source-domain values."
   (let ((result (lg-preview optic source)))
     (if (lg-just-p result) (cdr result) default)))
 
-(defconst lg--endo-list-monoid
-  (make-lg-monoid :empty #'identity
-                  :append (lambda (f g)
-                            (lambda (tail) (funcall f (funcall g tail)))))
-  "List-builder monoid of functions, avoiding quadratic `append'.")
+(cl-defstruct (lg--fold-leaf (:constructor lg--fold-leaf (value)))
+  value)
+
+(cl-defstruct (lg--fold-cat (:constructor lg--fold-cat (left right)))
+  left right)
+
+(defconst lg--list-builder-monoid
+  (make-lg-monoid :empty nil
+                  :append (lambda (left right)
+                            (cond ((null left) right)
+                                  ((null right) left)
+                                  (t (lg--fold-cat left right)))))
+  "List-builder monoid over leaf/concatenation trees.
+Constant-time append and iterative flattening keep collection linear
+without nesting calls per focus.")
+
+(defun lg--fold-tree-list (tree)
+  "Flatten TREE of `lg--fold-cat' nodes into a left-to-right leaf list."
+  (let ((stack (list tree))
+        (result nil))
+    (while stack
+      (let ((node (pop stack)))
+        (cond ((null node))
+              ((lg--fold-cat-p node)
+               (push (lg--fold-cat-right node) stack)
+               (push (lg--fold-cat-left node) stack))
+              (t (push (lg--fold-leaf-value node) result)))))
+    (nreverse result)))
 
 (defun lg-to-list-of (optic source)
   "Collect all focus values for OPTIC in SOURCE."
-  (let* ((app (lg--const-applicative lg--endo-list-monoid))
+  (let* ((app (lg--const-applicative lg--list-builder-monoid))
          (profunctor (lg--star-profunctor app))
          (transform (lg--run-optic
                      optic
                      profunctor
                      (lambda (focus)
-                        (make-lg-const
-                         :value (lambda (tail) (cons focus tail)))))))
-    (funcall (lg-const-value (funcall transform source)) nil)))
+                        (make-lg-const :value (lg--fold-leaf focus))))))
+    (lg--fold-tree-list (lg-const-value (funcall transform source)))))
 
 (defun lg-ito-list-of (optic source)
   "Collect all indexed focus values for OPTIC in SOURCE.
 Each item is (INDEX . FOCUS)."
-  (let* ((app (lg--const-applicative lg--endo-list-monoid))
+  (let* ((app (lg--const-applicative lg--list-builder-monoid))
          (profunctor (lg--indexed-star-profunctor app))
          (transform (lg--run-indexed-optic
                      optic
@@ -1644,11 +1730,10 @@ Each item is (INDEX . FOCUS)."
                      (make-lg-indexed
                       :run (lambda (index focus)
                              (make-lg-const
-                              :value (lambda (tail)
-                                       (cons (cons index focus) tail))))))))
-    (funcall (lg-const-value
-              (funcall (lg-indexed-run transform) lg-no-index source))
-             nil)))
+                              :value (lg--fold-leaf (cons index focus))))))))
+    (lg--fold-tree-list
+     (lg-const-value
+      (funcall (lg-indexed-run transform) lg-no-index source)))))
 
 (defun lg-ipreview (optic source)
   "Return a disambiguated indexed preview for OPTIC in SOURCE.
@@ -1676,8 +1761,10 @@ VALUE can be nil when nil is an actual focus value."
   (lg-just-p (lg-preview optic source)))
 
 (defun lg-iview (optic source)
-  "View exactly one indexed focus from OPTIC in SOURCE.
-Signals `lg-no-focus' when no focus exists."
+  "View the first indexed focus from OPTIC in SOURCE.
+Returns an (INDEX . FOCUS) pair; signals `lg-no-focus' when no focus
+exists.  When OPTIC has several focuses the first is returned; use
+`lg-ito-list-of' for all of them."
   (let ((result (lg-ipreview optic source)))
     (if (lg-just-p result)
         (cdr result)
@@ -1713,13 +1800,14 @@ under Re constraints.  Errors raised by the optic's own functions
 propagate unchanged."
   (make-lg-optic
    :apply (lambda (p pba)
-            (let* ((rep (condition-case nil
+            (let* ((rep (condition-case err
                             (lg--run-optic optic
                                            (lg--re-profunctor p)
                                            (make-lg-rep-re :run #'identity))
                           (lg-unsupported-capability
                            (signal 'lg-unsupported-capability
-                                   (list "Optic cannot be reversed under current profunctor"))))))
+                                   (cons "Optic cannot be reversed under current profunctor"
+                                         (cdr err)))))))
               (funcall (lg-rep-re-run rep) pba)))))
 
 (defconst lg-car
@@ -1789,45 +1877,55 @@ propagate unchanged."
                  (string-to-list source))))))
   "Indexed traversal over all characters in a string.")
 
+(defun lg--check-nth-bounds (source index)
+  "Signal unless INDEX is a valid position in sequence SOURCE."
+  (unless (and (integerp index) (>= index 0) (< index (length source)))
+    (error "Index %s out of range" index)))
+
 (cl-defgeneric lg-nth-get (source index)
   "Read INDEX from SOURCE for `lg-nth'.")
 
 (cl-defgeneric lg-nth-set (source index new-focus)
   "Set INDEX in SOURCE to NEW-FOCUS for `lg-nth'.")
 
+(cl-defmethod lg-nth-get (source _index)
+  "Reject unsupported container SOURCE with a descriptive error."
+  (error "Unsupported container for lg-nth (expected list, vector, string, or bool-vector): %S"
+         source))
+
+(cl-defmethod lg-nth-set (source _index _new-focus)
+  "Reject unsupported container SOURCE with a descriptive error."
+  (error "Unsupported container for lg-nth (expected list, vector, string, or bool-vector): %S"
+         source))
+
 (cl-defmethod lg-nth-get ((source list) index)
   "Specialization of `lg-nth-get' for list.
 SOURCE and INDEX follow the generic."
-  (unless (and (>= index 0) (< index (length source)))
-    (error "Index %s out of range" index))
+  (lg--check-nth-bounds source index)
   (nth index source))
 
 (cl-defmethod lg-nth-get ((source vector) index)
   "Specialization of `lg-nth-get' for vector.
 SOURCE and INDEX follow the generic."
-  (unless (and (>= index 0) (< index (length source)))
-    (error "Index %s out of range" index))
+  (lg--check-nth-bounds source index)
   (aref source index))
 
 (cl-defmethod lg-nth-get ((source string) index)
   "Specialization of `lg-nth-get' for string.
 SOURCE and INDEX follow the generic."
-  (unless (and (>= index 0) (< index (length source)))
-    (error "Index %s out of range" index))
+  (lg--check-nth-bounds source index)
   (aref source index))
 
 (cl-defmethod lg-nth-get ((source bool-vector) index)
   "Specialization of `lg-nth-get' for `bool-vector'.
 SOURCE and INDEX follow the generic."
-  (unless (and (>= index 0) (< index (length source)))
-    (error "Index %s out of range" index))
+  (lg--check-nth-bounds source index)
   (aref source index))
 
 (cl-defmethod lg-nth-set ((source list) index new-focus)
   "Specialization of `lg-nth-set' for list.
 SOURCE, INDEX and NEW-FOCUS follow the generic."
-  (unless (and (>= index 0) (< index (length source)))
-    (error "Index %s out of range" index))
+  (lg--check-nth-bounds source index)
   (let ((result (copy-sequence source)))
     (setf (nth index result) new-focus)
     result))
@@ -1835,8 +1933,7 @@ SOURCE, INDEX and NEW-FOCUS follow the generic."
 (cl-defmethod lg-nth-set ((source vector) index new-focus)
   "Specialization of `lg-nth-set' for vector.
 SOURCE, INDEX and NEW-FOCUS follow the generic."
-  (unless (and (>= index 0) (< index (length source)))
-    (error "Index %s out of range" index))
+  (lg--check-nth-bounds source index)
   (let ((result (copy-sequence source)))
     (aset result index new-focus)
     result))
@@ -1844,8 +1941,7 @@ SOURCE, INDEX and NEW-FOCUS follow the generic."
 (cl-defmethod lg-nth-set ((source string) index new-focus)
   "Specialization of `lg-nth-set' for string.
 SOURCE, INDEX and NEW-FOCUS follow the generic."
-  (unless (and (>= index 0) (< index (length source)))
-    (error "Index %s out of range" index))
+  (lg--check-nth-bounds source index)
   (unless (characterp new-focus)
     (error "Expected character focus for string source"))
   (let ((result (copy-sequence source)))
@@ -1855,8 +1951,7 @@ SOURCE, INDEX and NEW-FOCUS follow the generic."
 (cl-defmethod lg-nth-set ((source bool-vector) index new-focus)
   "Specialization of `lg-nth-set' for `bool-vector'.
 SOURCE, INDEX and NEW-FOCUS follow the generic."
-  (unless (and (>= index 0) (< index (length source)))
-    (error "Index %s out of range" index))
+  (lg--check-nth-bounds source index)
   (unless (booleanp new-focus)
     (error "Expected boolean focus for bool-vector source"))
   (let ((result (copy-sequence source)))
@@ -1887,6 +1982,16 @@ Signals when INDEX is out of range."
                (>= end start)
                (<= end length))
     (error "Invalid slice bounds [%s, %s) for length %s" start end length)))
+
+(cl-defmethod lg-slice-get (source _start _end)
+  "Reject unsupported container SOURCE with a descriptive error."
+  (error "Unsupported container for lg-slice (expected list, vector, or string): %S"
+         source))
+
+(cl-defmethod lg-slice-set (source _start _end _new-focus)
+  "Reject unsupported container SOURCE with a descriptive error."
+  (error "Unsupported container for lg-slice (expected list, vector, or string): %S"
+         source))
 
 (cl-defmethod lg-slice-get ((source list) start end)
   "Specialization of `lg-slice-get' for list.
@@ -1942,7 +2047,7 @@ Setting the focus replaces the range with a sequence of the same
 container type, supporting insertion when START equals END.
 
 Law caveat: this optic is a lawful lens only for length-preserving
-writes.  When the replacement changes the list's length, the fixed
+writes.  When the replacement changes the sequence's length, the fixed
 window no longer lines up, so the get-set and set-set lens laws do
 not hold.  See laws.org."
   (lg-lens
@@ -1952,14 +2057,50 @@ not hold.  See laws.org."
      (lg-slice-set source start end new-focus))))
 
 (defun lg-plist-key (key &optional testfn)
-  "Affine traversal focusing KEY in a plist.
+  "Affine traversal focusing existing KEY in a plist.
+The container kind is fixed: the source list is always treated as a
+plist, bypassing the shape inference `lg-ix' performs.
 TESTFN defaults to `eq'."
-  (lg-ix key (or testfn #'eq)))
+  (let ((test (or testfn #'eq)))
+    (lg-affine
+     (lambda (source)
+       (lg--list-ix-get 'plist source key test))
+     (lambda (source new-focus)
+       (lg--list-ix-set 'plist source key new-focus test)))))
 
 (defun lg-alist-key (key &optional testfn)
-  "Affine traversal focusing KEY in an alist.
+  "Affine traversal focusing existing KEY in an alist.
+The container kind is fixed: the source list is always treated as an
+alist, bypassing the shape inference `lg-ix' performs.
 TESTFN defaults to `equal'."
-  (lg-ix key (or testfn #'equal)))
+  (let ((test (or testfn #'equal)))
+    (lg-affine
+     (lambda (source)
+       (lg--list-ix-get 'alist source key test))
+     (lambda (source new-focus)
+       (lg--list-ix-set 'alist source key new-focus test)))))
+
+(defun lg-plist-at (key &optional testfn)
+  "Lens focusing presence and value of KEY in a plist.
+Like `lg-at' but the container kind is fixed to plist, so insertion
+into an empty list builds a plist.  TESTFN defaults to `eq'."
+  (let ((test (or testfn #'eq)))
+    (lg-lens
+     (lambda (source)
+       (lg--list-ix-get 'plist source key test))
+     (lambda (source maybe)
+       (lg--list-at-set 'plist source key (lg--check-maybe maybe) test)))))
+
+(defun lg-alist-at (key &optional testfn)
+  "Lens focusing presence and value of KEY in an alist.
+Like `lg-at' but the container kind is fixed to alist.
+TESTFN defaults to `equal'."
+  (let ((test (or testfn #'equal)))
+    (lg-lens
+     (lambda (source)
+       (lg--list-ix-get 'alist source key test))
+     (lambda (source maybe)
+       (lg--list-at-set 'alist source key (lg--check-maybe maybe) test)))))
 
 (defconst lg-just-o
   (lg-prism

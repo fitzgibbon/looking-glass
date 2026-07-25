@@ -470,6 +470,69 @@
   (should-error (lg-view (lg-slice 0 9) [1 2]))
   (should-error (lg-set (lg-slice 0 1) '(1) [1 2])))
 
+(ert-deftest lg-read-paths-handle-large-containers ()
+  (let ((big (make-list 10000 1)))
+    (should (= (length (lg-to-list-of lg-list big)) 10000))
+    (should (equal (lg-preview lg-list big) (lg-just 1)))
+    (should (= (length (lg-ito-list-of lg-indexed-list big)) 10000))
+    (should (= (lg-length-of lg-list big) 10000))
+    (should (equal (lg-over lg-list #'identity big) big))))
+
+(ert-deftest lg-at-rejects-raw-values ()
+  (should-error (lg-set (lg-at :k) 5 '(:k 1 :other 2)))
+  (should-error (lg-set (lg-at 'k) 5 '((k . 1))))
+  (let ((table (make-hash-table :test 'equal)))
+    (puthash "k" 1 table)
+    (should-error (lg-set (lg-at "k") 5 table))
+    (should (= (gethash "k" table) 1)))
+  (should-error (lg-set (lg-at :k) (lg-just 1) 42)))
+
+(ert-deftest lg-clone-affine-rejects-multi-focus ()
+  (let ((clone (lg-clone-affine lg-list)))
+    (should-error (lg-over clone #'identity '(1 2 3)))
+    (should-error (lg-preview clone '(1 2 3)))
+    (should (equal (lg-preview clone '(1)) (lg-just 1)))
+    (should (equal (lg-set clone 9 '(1)) '(9)))
+    (should (equal (lg-preview clone '()) lg-nothing))))
+
+(ert-deftest lg-json-parse-with-rejects-colliding-sentinels ()
+  (should-error (lg-json-parse-with 'hash-table 'array nil 0))
+  (should-error (lg-json-parse-with 'hash-table 'array nil "no"))
+  (should-error (lg-json-parse-with 'hash-table 'array nil t))
+  (should-error (lg-json-parse-with 'hash-table 'array 0 lg-false))
+  (should-error (lg-json-parse-with 'hash-table 'array :x :x))
+  (should-error (lg-json-parse-with 'hash-table 'array lg-true lg-false))
+  (should (lg-optic-p (lg-json-parse-with 'hash-table 'array :null :false))))
+
+(ert-deftest lg-package-loads-without-native-json ()
+  ;; Construction defers the availability check to first use, so the
+  ;; defconst `lg-json-parse' must not require native JSON.
+  (cl-letf (((symbol-function 'json-available-p) (lambda () nil)))
+    (should (lg-optic-p (lg-json-parse-with 'hash-table 'array nil lg-false)))
+    (should-error (lg-view lg-json-parse "{}"))))
+
+(ert-deftest lg-kind-pinned-key-optics ()
+  ;; lg-plist-key/lg-alist-key fix the container kind instead of
+  ;; inferring it from shape.
+  (should (equal (lg-preview (lg-plist-key 'a) '((a . 1) (b . 2)))
+                 lg-nothing))
+  (should (equal (lg-preview (lg-alist-key :k) '(:k 1)) lg-nothing))
+  (should (equal (lg-preview (lg-plist-key :k) '(:k 1)) (lg-just 1)))
+  (should (equal (lg-set (lg-alist-key 'a) 9 '((a . 1) (b . 2)))
+                 '((a . 9) (b . 2))))
+  ;; Kind-pinned at-lenses: insertion into nil respects the pinned kind.
+  (should (equal (lg-set (lg-plist-at :k) (lg-just 1) nil) '(:k 1)))
+  (should (equal (lg-set (lg-alist-at :k) (lg-just 1) nil) '((:k . 1))))
+  (should (equal (lg-set (lg-plist-at :k) lg-nothing '(:k 1 :o 2)) '(:o 2)))
+  (should-error (lg-set (lg-plist-at :k) 5 '(:k 1))))
+
+(ert-deftest lg-unsupported-containers-signal-descriptive-errors ()
+  (should-error (lg-view (lg-nth 0) 42))
+  (should-error (lg-view (lg-slice 0 1) 42))
+  (should-error (lg-view (lg-slice 0 1) (bool-vector t nil)))
+  (should-error (lg-preview (lg-ix :k) 42))
+  (should-error (lg-set (lg-at :k) (lg-just 1) "string")))
+
 (ert-deftest lg-monoid-any-all-product ()
   (should (eq (lg-fold-map-of lg-list lg-monoid-any #'cl-evenp '(1 3 4)) t))
   (should (eq (lg-fold-map-of lg-list lg-monoid-any #'cl-evenp '(1 3 5)) nil))

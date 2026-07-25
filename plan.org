@@ -43,6 +43,18 @@ CLOSED: [2026-07-25]
   FCR-038 (~scripts/run-tests.sh~, install-info diagnostics), FCR-040
   (~json-available-p~ check, caveats documented).
 
+* DONE Round-2 re-review and remediation (FCR-041..FCR-057, see review.org)
+CLOSED: [2026-07-25]
+- [X] FCR-041 fold crash on large containers (cat-tree monoid + 10k test).
+- [X] FCR-042 ~lg-at~ raw-value silent deletion (setter validation).
+- [X] FCR-043 load failure without native JSON (check deferred to use).
+- [X] FCR-044 JSON sentinel collision validation.
+- [X] FCR-045 ~lg-clone-affine~ multi-focus signals.
+- [X] FCR-046 kind-pinned ~lg-plist-key~/~lg-alist-key~ +
+  ~lg-plist-at~/~lg-alist-at~.
+- [X] FCR-047 filtered-family law caveat; laws.org scoped.
+- [X] FCR-048..056 contract docs, descriptive default methods, debt.
+
 * TODO Future work
 - [ ] Forget-style short-circuit for ~lg-preview~ (folds currently visit
   all focuses; noted under FCR-024).

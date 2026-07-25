@@ -77,6 +77,13 @@ For plist/alist/hash-table access:
 
 - ~lg-ix~ focuses existing keys only.
 - ~lg-at~ focuses presence and value as tagged maybe (~lg-just~ or ~lg-nothing~).
+  Setting anything that is not a tagged maybe signals.
+
+~lg-ix~ and ~lg-at~ classify lists by shape (see the docstrings for the
+rules).  ~lg-plist-key~, ~lg-alist-key~, ~lg-plist-at~, and
+~lg-alist-at~ fix the container kind explicitly instead of inferring
+it — in particular, ~lg-plist-at~ inserts into an empty list as a
+plist.
 
 #+begin_src emacs-lisp
 (let ((profile '(:name "Ada" :age 10)))
