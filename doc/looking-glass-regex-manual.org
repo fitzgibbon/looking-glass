@@ -23,7 +23,7 @@
 - ~lg-regex-all REGEXP &rest OPTIONS~: traversal over all non-overlapping full matches.
 - ~lg-regex-all-groups REGEXP GROUP &rest OPTIONS~: traversal over each match's capture group.
 
-Supported option keys are ~:case-fold~, ~:search-spaces-regexp~, ~:search-whitespace-regexp~, and ~:syntax-table~.
+Supported option keys are ~:case-fold~, ~:search-spaces-regexp~, and ~:syntax-table~.
 By default regex optics bind ~case-fold-search~ to nil and use ~standard-syntax-table~ for deterministic matching.
 
 #+begin_src emacs-lisp

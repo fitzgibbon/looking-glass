@@ -14,11 +14,29 @@ CLOSED: [2026-07-25]
 - [X] FCR-005: ~lg>>~ composes outermost-to-innermost like ~lg-compose~,
   ~lg<<~ reversed; docstrings, manual, direction tests.
 
-* TODO Remaining review findings (see review.org for details)
-- [ ] Medium bugs: FCR-006 (Either prisms crash on non-cons), FCR-007
-  (~lg-review~ swallows errors), FCR-008 (inert ~:search-whitespace-regexp~).
-- [ ] Low bugs: FCR-009, FCR-010, FCR-011.
-- [ ] Design: FCR-012..FCR-021 (index-combining composition, seam errors,
-  getter/review asymmetry, slice law caveat, MELPA packaging).
-- [ ] Feature gaps: FCR-022 (~laws.org~), FCR-023 (~lg-slice~ beyond lists).
-- [ ] Tech debt: FCR-024..FCR-040.
+* DONE Fix medium findings from full-repo review (review.org)
+CLOSED: [2026-07-25]
+- [X] Bugs: FCR-006 (Either prisms total), FCR-007
+  (~lg-unsupported-capability~ error; builder errors propagate), FCR-008
+  (inert option removed).
+- [X] Design: FCR-012 (~lg-icompose-with~), FCR-013 (composition-time
+  validation), FCR-014 (asymmetry documented), FCR-015 (slice caveat),
+  FCR-016 (MELPA recipes, ~-pkg.el~ removed, release branch strategy).
+- [X] Feature gap: FCR-022 (~laws.org~ written).
+- [X] Tech debt: FCR-024 (linear folds), FCR-025 (wrappers inlined),
+  FCR-026 (public ~lg-traverse-list~), FCR-027 (heuristics gone),
+  FCR-028 (regex constructors delegate), FCR-029/021 (CI byte-compile
+  gate, tests first), FCR-030 (untested API covered; fixed latent
+  ~lg-clone-affine~ bug), FCR-031 (define-before-use), FCR-032 (AGENTS.md
+  purity policy).
+- [X] Opportunistic: FCR-011, FCR-020, FCR-035, part of FCR-034.
+
+* TODO Remaining low/informational review findings (see review.org)
+- [ ] Low bugs: FCR-009 (~lg-ix~ on odd-length lists), FCR-010
+  (duplicate-key plist deletion).
+- [ ] Design: FCR-017 (alias consolidation), FCR-018 (~lg-just-o~ tag),
+  FCR-019 (container classification docs).
+- [ ] Feature gap: FCR-023 (~lg-slice~ beyond lists).
+- [ ] Tech debt: FCR-033 (dead Stall/Forget encoding machinery — now
+  including the unused ~lg--stall-profunctor~), FCR-034 remainder,
+  FCR-036, FCR-037 (checkdoc), FCR-038, FCR-040.

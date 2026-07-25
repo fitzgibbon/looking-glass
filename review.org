@@ -40,6 +40,73 @@ Suite after fixes: 60/60 tests pass; all README and manual examples verified
 to produce their documented output, including the regex manual composition
 example broken by FCR-003.
 
+* Round 1 remediation status — medium findings
+
+All Medium findings were subsequently fixed as well:
+
+- FCR-006 :: *fixed* — ~lg-left-p~/~lg-right-p~ use ~car-safe~, so
+  ~lg-left-o~/~lg-right-o~ degrade to no-match on non-cons input.
+- FCR-007 :: *fixed* — capability gaps now signal a dedicated
+  ~lg-unsupported-capability~ error; ~lg-review~ and ~lg-re~ catch only
+  that, so builder/validation errors propagate unchanged.
+- FCR-008 :: *fixed* — the inert ~:search-whitespace-regexp~ option was
+  removed from code, docstrings, and the regex manual; a test now covers
+  the working ~:search-spaces-regexp~.
+- FCR-012 :: *fixed* — index threading (round 1) plus a new
+  ~lg-icompose-with~ combinator that combines outer and inner indices;
+  innermost-index semantics documented.
+- FCR-013 :: *fixed* — ~lg-compose~/~lg-compose-indexed~ validate their
+  arguments at composition time and name the bridging functions
+  (~lg-unindexed~/~lg-as-indexed~) in the error.
+- FCR-014 :: *resolved as documented decision* — the getter set-no-op vs
+  review-signal asymmetry is documented in the manual and ~laws.org~; the
+  misleading ~lg-unto~ error text now names the actual constraint.
+- FCR-015 :: *fixed* — ~lg-slice~ docstring and ~laws.org~ document the
+  length-changing law caveat; it is described as a slice optic, not a lens.
+- FCR-016 :: *fixed* — committed ~-pkg.el~ files removed (MELPA generates
+  them), README documents explicit recipes with ~:files~ and a
+  ~melpa-release~ branch that mirrors ~main~ plus info files, and the
+  dry-run script's orphan-checkout hazard was replaced with
+  ~checkout -B ... origin/main~.
+- FCR-022 :: *fixed* — ~laws.org~ written; README and manual references
+  now resolve.
+- FCR-024 :: *fixed* — fold collection uses a function-composition monoid
+  (linear), and all ~(append result ...)~ loops were replaced with
+  push/nreverse. The Forget-based preview short-circuit remains future
+  work (folds still visit all focuses).
+- FCR-025 :: *fixed* — the seven ~lg--~ wrapper twins were inlined into
+  their public functions.
+- FCR-026 :: *fixed* — ~lg-traverse-list~ is public; the verbatim copy in
+  the regex package was deleted.
+- FCR-027 :: *fixed by the FCR-002 rewrite* — the fragile heuristics are
+  gone; the two remaining walkers are simple, type-driven, and no longer
+  share heuristic logic with ~lg--list-ix-kind~.
+- FCR-028 :: *fixed* — ~lg-regex-match~ and ~lg-regex-all~ delegate to
+  ~lg-regex-group~/~lg-regex-all-groups~ with group 0.
+- FCR-029 :: *fixed* — CI byte-compiles both packages with warnings as
+  errors, and (FCR-021) the test suite now runs before the manual build.
+- FCR-030 :: *fixed* — tests added for ~lg-clone-*~, composed indexed
+  optics, ~lg-map-of~/~lg-for-of~/~lg-imap-of~/~lg-ifor-of~,
+  ~lg-hash-key~/~lg-hash-key-at~, ~lg-monoid-any~/~all~/~product~,
+  ~:search-spaces-regexp~, composition validation, and review error
+  propagation. Writing these exposed and fixed a latent bug beyond the
+  review: ~lg-clone-affine~ could not clone optics built with
+  ~lg-affine~/~lg-ix~ (the Stall profunctor lacks wander); it now clones
+  via the public preview/set path.
+- FCR-031 :: *fixed* — ~lg-non-nil~ moved above ~lg-required~; the
+  byte-compile is now warning-free (which also cleared most of FCR-037).
+- FCR-032 :: *fixed* — AGENTS.md now states the purity policy directly
+  instead of mandating the removed effect system.
+
+Also addressed opportunistically: FCR-011 (release dry-run uses
+~--generate-notes~), FCR-020 (~lg-view~ docstring says "first focus"),
+FCR-035 (~.gitignore~ for ~*.elc~ and ~build/~), and part of FCR-034
+(~URL:~ headers added, redundant ~cl-lib~ dependency dropped, version now
+stated in three places rather than five).
+
+Suite after medium fixes: 68/68 tests pass; byte-compile clean with
+warnings-as-errors; manual build verified.
+
 * Context used
 
 - Target :: local repo, 18 files, ~3,470 lines (no PR; entire codebase)

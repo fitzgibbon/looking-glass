@@ -17,15 +17,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y emacs-nox texinfo
 
-      - name: Build manuals from org
-        run: |
-          scripts/build-manuals.sh
-
       - name: Run test suite
         run: |
           emacs -Q --batch -L . -L test \
             -l test/looking-glass-test.el \
             -f ert-run-tests-batch-and-exit
+
+      - name: Byte-compile with warnings as errors
+        run: |
+          emacs -Q --batch -L . \
+            --eval '(setq byte-compile-error-on-warn t)' \
+            -f batch-byte-compile looking-glass.el looking-glass-regex.el
+
+      - name: Build manuals from org
+        run: |
+          scripts/build-manuals.sh
 
       - name: Upload built manuals artifact
         uses: actions/upload-artifact@v4

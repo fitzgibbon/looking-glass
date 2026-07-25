@@ -2,7 +2,8 @@
 
 ;; Author: looking-glass contributors
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "28.1") (cl-lib "0.6") (looking-glass "0.1.0"))
+;; Package-Requires: ((emacs "28.1") (looking-glass "0.1.0"))
+;; URL: https://github.com/fitzgibbon/looking-glass
 ;; Keywords: lisp, convenience, regex
 
 ;;; Commentary:
@@ -28,15 +29,12 @@
 
 (defun lg-regex--with-options (options thunk)
   "Run THUNK with regex OPTIONS bindings applied.
-Supported keys are :case-fold, :search-spaces-regexp,
-:search-whitespace-regexp, and :syntax-table."
+Supported keys are :case-fold, :search-spaces-regexp, and
+:syntax-table."
   (let ((case-fold-search
          (lg-regex--option options :case-fold nil))
         (search-spaces-regexp
          (lg-regex--option options :search-spaces-regexp search-spaces-regexp))
-        (search-whitespace-regexp
-         (lg-regex--option options :search-whitespace-regexp
-                           search-whitespace-regexp))
         (syntax-table
          (lg-regex--option options :syntax-table (standard-syntax-table))))
     (with-syntax-table syntax-table
@@ -116,52 +114,15 @@ Separators are not included in spans and are preserved during replacement."
       (push (list start length (substring source start length)) spans)
       (nreverse spans))))
 
-(defun lg-regex--traverse-list (applicative afb source)
-  "Traverse SOURCE list with AFB using APPLICATIVE."
-  (let ((pure (lg-applicative-pure applicative))
-        (ap (lg-applicative-ap applicative))
-        (fmap (lg-applicative-fmap applicative)))
-    (funcall fmap
-             #'nreverse
-             (cl-reduce
-              (lambda (acc focus)
-                (funcall ap
-                         (funcall fmap
-                                  (lambda (partial)
-                                    (lambda (item) (cons item partial)))
-                                  acc)
-                         (funcall afb focus)))
-              source
-              :initial-value (funcall pure nil)))))
-
 (defun lg-regex-match (regexp &rest options)
   "Affine traversal focusing the first full REGEXP match in a string.
-OPTIONS keys: :case-fold, :search-spaces-regexp,
-:search-whitespace-regexp, :syntax-table."
-  (lg-affine
-   (lambda (source)
-      (lg-regex--with-options
-       options
-       (lambda ()
-         (setq source (lg-regex--ensure-string source))
-         (let ((spans (lg-regex--collect-spans regexp source 0)))
-           (if spans
-               (lg-just (nth 2 (car spans)))
-             lg-nothing)))))
-   (lambda (source new-focus)
-      (lg-regex--with-options
-       options
-       (lambda ()
-         (setq source (lg-regex--ensure-string source))
-         (let ((spans (lg-regex--collect-spans regexp source 0)))
-           (if spans
-               (lg-regex--replace-spans source (list (car spans)) (list new-focus))
-             source)))))))
+OPTIONS keys: :case-fold, :search-spaces-regexp, :syntax-table."
+  (apply #'lg-regex-group regexp 0 options))
 
 (defun lg-regex-group (regexp group &rest options)
   "Affine traversal focusing first REGEXP capture GROUP in a string.
-OPTIONS keys: :case-fold, :search-spaces-regexp,
-:search-whitespace-regexp, :syntax-table."
+GROUP 0 focuses the full match.
+OPTIONS keys: :case-fold, :search-spaces-regexp, :syntax-table."
   (lg-affine
    (lambda (source)
       (lg-regex--with-options
@@ -184,26 +145,13 @@ OPTIONS keys: :case-fold, :search-spaces-regexp,
 
 (defun lg-regex-all (regexp &rest options)
   "Traversal focusing all non-overlapping full REGEXP matches in a string.
-OPTIONS keys: :case-fold, :search-spaces-regexp,
-:search-whitespace-regexp, :syntax-table."
-  (lg-traversal
-   (lambda (afb source applicative)
-      (lg-regex--with-options
-       options
-       (lambda ()
-         (setq source (lg-regex--ensure-string source))
-         (let* ((fmap (lg-applicative-fmap applicative))
-                (spans (lg-regex--collect-spans regexp source 0))
-                (focuses (mapcar (lambda (span) (nth 2 span)) spans)))
-           (funcall fmap
-                    (lambda (replacements)
-                      (lg-regex--replace-spans source spans replacements))
-                    (lg-regex--traverse-list applicative afb focuses))))))))
+OPTIONS keys: :case-fold, :search-spaces-regexp, :syntax-table."
+  (apply #'lg-regex-all-groups regexp 0 options))
 
 (defun lg-regex-all-groups (regexp group &rest options)
   "Traversal focusing capture GROUP for each REGEXP match in a string.
-OPTIONS keys: :case-fold, :search-spaces-regexp,
-:search-whitespace-regexp, :syntax-table."
+GROUP 0 focuses the full match.
+OPTIONS keys: :case-fold, :search-spaces-regexp, :syntax-table."
   (lg-traversal
    (lambda (afb source applicative)
       (lg-regex--with-options
@@ -216,7 +164,7 @@ OPTIONS keys: :case-fold, :search-spaces-regexp,
            (funcall fmap
                     (lambda (replacements)
                       (lg-regex--replace-spans source spans replacements))
-                    (lg-regex--traverse-list applicative afb focuses))))))))
+                    (lg-traverse-list applicative afb focuses))))))))
 
 (defun lg-regex-replace (regexp replacement source &rest options)
   "Replace all REGEXP matches in SOURCE with REPLACEMENT.
@@ -245,7 +193,7 @@ REPLACEMENT is a function called with each match string."
        (funcall fmap
                 (lambda (replacements)
                   (lg-regex--replace-spans source spans replacements))
-                (lg-regex--traverse-list applicative afb focuses)))))
+                (lg-traverse-list applicative afb focuses)))))
   "Traversal focusing line content while preserving original separators.")
 
 (defconst lg-utf8

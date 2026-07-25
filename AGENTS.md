@@ -6,7 +6,7 @@
 - **ALWAYS** commit and push your work at the end of implementing a feature.
 
 # Development requirements
-- Optics that mutate state or have side-effects **MUST** represent these with the monadic effect system instead of directly changing state or causing side-effects.
+- Optics **MUST** be pure: transforms return new values and never mutate state or cause side-effects. Effectful optics are out of scope for this project (the earlier effect system was removed).
 - Follow the optics laws where possible, and clearly document instances where they are broken.
 - All features should have working tests. Tests should favour using temporary buffers and assume availability of any library required by the feature. Only data and remote network responses should be mocked.
 

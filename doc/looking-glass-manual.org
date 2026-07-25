@@ -204,12 +204,20 @@ construction time because their values could not round-trip.
 
 * Laws and caveats
 
-See ~laws.org~ for law expectations and explicit caveats.
+See ~laws.org~ in the repository root for law expectations and the full
+list of documented deviations.
 
 Key points:
 
 - standard iso/lens/prism/traversal laws are targeted,
-- indexed optics preserve focus behavior and order while exposing index metadata,
+- indexed optics preserve focus behavior and order while exposing index
+  metadata; composed indexed optics keep the innermost index unless
+  combined with ~lg-icompose-with~,
+- ~lg-slice~ is lawful only for length-preserving writes,
+- setting through ~lg-getter~ is a documented no-op, while viewing
+  through a pure review signals,
+- ~lg-number-string~ and ~lg-json-parse~ are lawful up to canonical
+  formatting,
 - ~lg-unmaybe~ is documented as intentionally lossy.
 
 * Testing

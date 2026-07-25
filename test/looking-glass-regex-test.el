@@ -93,6 +93,12 @@
     (should (equal (lg-preview lg-utf8 (unibyte-string #xC3 #x28)) lg-nothing))
     (should (equal (lg-preview lg-utf8 (unibyte-string #xff #xff)) lg-nothing))))
 
+(ert-deftest lg-regex-search-spaces-option ()
+  (should (equal (lg-preview (lg-regex-match "a b" :search-spaces-regexp "[ \t]+")
+                             "a \t b")
+                 (lg-just "a \t b")))
+  (should (equal (lg-preview (lg-regex-match "a b") "a \t b") lg-nothing)))
+
 (ert-deftest lg-regex-optics-preserve-caller-match-data ()
   (string-match "\\(wor\\)ld" "hello world")
   (let ((before (match-data)))
