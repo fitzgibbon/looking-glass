@@ -9,6 +9,37 @@
 - Focus mode :: full repository audit (entire repo on ~main~, not a diff)
 - Commit reviewed :: ~01647a7~ (clean working tree)
 
+* Round 1 remediation status
+
+All Critical and High findings were fixed after this review was recorded:
+
+- FCR-001 :: *fixed* — the indexed Star profunctor now threads the enclosing
+  index through every combinator; ~lg-ifiltered~/~lg-indices~ receive real
+  indices when composed (regression tests added). FCR-012 is partially
+  addressed: the index is threaded, and innermost-index composition semantics
+  are now documented in ~lg-indexed~ and the manual.
+- FCR-002 :: *fixed* — JSON normalization is type-driven on the declared
+  ~OBJECT-TYPE~/~ARRAY-TYPE~; ambiguous configurations (alist/plist objects
+  with list arrays; list-shaped types with a nil null object) are rejected at
+  construction time. Identity round-trips verified for every accepted
+  configuration, including ~[true,false]~, ~{}~, ~[]~, ~null~, and nested
+  arrays.
+- FCR-003 :: *fixed* — ~lg-utf8~ accepts pure-ASCII bytes. Note: the review's
+  suggested fix (drop the detect gate, rely on the round-trip check) was
+  wrong — invalid UTF-8 decodes to raw-byte characters that re-encode
+  verbatim, so the round-trip check alone accepts garbage. The fix instead
+  replaces the detect gate with a raw-byte-character check on the decoded
+  text; invalid sequences still fail (tested).
+- FCR-004 :: *fixed* — span collection wrapped in ~save-match-data~;
+  regression test asserts caller match data is preserved.
+- FCR-005 :: *fixed* — ~lg>>~ now composes outermost-to-innermost like
+  ~lg-compose~, ~lg<<~ is the reverse; docstrings, manual, and direction
+  tests updated.
+
+Suite after fixes: 60/60 tests pass; all README and manual examples verified
+to produce their documented output, including the regex manual composition
+example broken by FCR-003.
+
 * Context used
 
 - Target :: local repo, 18 files, ~3,470 lines (no PR; entire codebase)

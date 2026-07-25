@@ -81,6 +81,26 @@
                    (encode-coding-string (upcase text) 'utf-8 t)))
     (should (equal (lg-preview lg-utf8 invalid) lg-nothing))))
 
+(ert-deftest lg-utf8-accepts-ascii-bytes ()
+  (let ((bytes (encode-coding-string "alpha beta" 'utf-8 t)))
+    (should (equal (lg-preview lg-utf8 bytes) (lg-just "alpha beta")))
+    (should (equal (lg-preview lg-utf8 (lg-review lg-utf8 "hello"))
+                   (lg-just "hello")))
+    (should (equal (lg-over (lg-compose lg-utf8 (lg-regex-all "[A-Za-z]+"))
+                            #'upcase
+                            bytes)
+                   (encode-coding-string "ALPHA BETA" 'utf-8 t)))
+    (should (equal (lg-preview lg-utf8 (unibyte-string #xC3 #x28)) lg-nothing))
+    (should (equal (lg-preview lg-utf8 (unibyte-string #xff #xff)) lg-nothing))))
+
+(ert-deftest lg-regex-optics-preserve-caller-match-data ()
+  (string-match "\\(wor\\)ld" "hello world")
+  (let ((before (match-data)))
+    (lg-preview (lg-regex-match "[0-9]+") "abc 123")
+    (lg-over (lg-regex-all "[a-z]+") #'upcase "one two")
+    (lg-to-list-of lg-lined "a\nb")
+    (should (equal (match-data) before))))
+
 (provide 'looking-glass-regex-test)
 
 ;;; looking-glass-regex-test.el ends here

@@ -38,7 +38,7 @@ For constructors, see ~lg-iso~, ~lg-lens~, ~lg-prism~, ~lg-affine~, ~lg-traversa
 
 * Composition and basic operations
 
-Compose from right to left with ~lg-compose~ (or ~lg<<~) and from left to right with ~lg>>~.
+Compose from outermost to innermost with ~lg-compose~ (or ~lg>>~): the leftmost optic is applied to the source first, and each following optic drills further in. ~lg<<~ composes in the reverse order, so ~(lg<< a b c)~ is ~(lg-compose c b a)~.
 
 #+begin_src emacs-lisp
 (let ((optic (lg-compose lg-car lg-cdr)))
@@ -108,6 +108,20 @@ Useful indexed combinators:
 - ~lg-ireindexed~, ~lg-as-indexed~, ~lg-unindexed~
 - ~lg-ifiltered~, ~lg-indices~, ~lg-indexed-list-filtered~
 
+~lg-ifiltered~ and ~lg-indices~ see the index supplied by the enclosing
+optic, so they filter by position when composed after an
+index-producing optic:
+
+#+begin_src emacs-lisp
+(lg-ito-list-of (lg-compose-indexed lg-indexed-list
+                                    (lg-indices #'cl-evenp))
+                '(10 11 12 13))
+;; => ((0 . 10) (2 . 12))
+#+end_src
+
+When indexed optics that generate their own indices are composed, the
+innermost index wins; at top level the index is ~lg-no-index~.
+
 * List slice lens
 
 ~lg-slice~ is a list lens over range ~[START, END)~.
@@ -174,6 +188,12 @@ Notable prebuilt isos/prisms:
 - ~lg-symbol-string~
 - ~lg-alist-plist~
 - ~lg-json-parse~ and ~lg-json-parse-with~
+
+~lg-json-parse-with~ accepts only distinguishable representations:
+alist/plist objects cannot be combined with list arrays, and any
+list-shaped container type requires a non-nil null object (for
+example ~:null~).  Ambiguous configurations signal an error at
+construction time because their values could not round-trip.
 
 #+begin_src emacs-lisp
 (lg-over (lg-compose lg-json-parse (lg-ix "name"))

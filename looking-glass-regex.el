@@ -47,31 +47,31 @@ Supported keys are :case-fold, :search-spaces-regexp,
   (and (multibyte-string-p text)
        (equal bytes (encode-coding-string text 'utf-8 t))))
 
-(defun lg-regex--utf8-bytes-p (bytes)
-  "Return non-nil when BYTES is detected as UTF-8 data."
-  (let ((coding (detect-coding-string bytes t)))
-    (and coding
-         (eq (coding-system-base coding) 'utf-8))))
+(defun lg-regex--utf8-text-p (text)
+  "Return non-nil when TEXT contains no raw-byte characters.
+Undecodable bytes decode to characters above the Unicode range."
+  (cl-every (lambda (char) (<= char #x10FFFF)) text))
 
 (defun lg-regex--collect-spans (regexp source group)
   "Collect non-overlapping REGEXP match spans in SOURCE for GROUP.
 Each result is a list (BEG END TEXT)."
-  (let ((start 0)
-        (length (length source))
-        spans)
-    (while (and (<= start length)
-                (string-match regexp source start))
-      (let ((match-beg (match-beginning 0))
-            (match-end (match-end 0))
-            (beg (match-beginning group))
-            (end (match-end group)))
-        (when (and beg end)
-          (push (list beg end (substring source beg end)) spans))
-        (setq start
-              (if (= match-beg match-end)
-                  (1+ match-end)
-                match-end))))
-    (nreverse spans)))
+  (save-match-data
+    (let ((start 0)
+          (length (length source))
+          spans)
+      (while (and (<= start length)
+                  (string-match regexp source start))
+        (let ((match-beg (match-beginning 0))
+              (match-end (match-end 0))
+              (beg (match-beginning group))
+              (end (match-end group)))
+          (when (and beg end)
+            (push (list beg end (substring source beg end)) spans))
+          (setq start
+                (if (= match-beg match-end)
+                    (1+ match-end)
+                  match-end))))
+      (nreverse spans))))
 
 (defun lg-regex--replace-spans (source spans replacements)
   "Replace SPANS in SOURCE with REPLACEMENTS.
@@ -103,17 +103,18 @@ SPANS is a list of (BEG END TEXT). REPLACEMENTS aligns 1:1 with SPANS."
 (defun lg-regex--collect-line-spans (source)
   "Collect line-content spans in SOURCE as (BEG END TEXT).
 Separators are not included in spans and are preserved during replacement."
-  (let ((start 0)
-        (length (length source))
-        spans)
-    (while (and (<= start length)
-                (string-match lg-regex--line-separator-regexp source start))
-      (let ((sep-beg (match-beginning 0))
-            (sep-end (match-end 0)))
-        (push (list start sep-beg (substring source start sep-beg)) spans)
-        (setq start sep-end)))
-    (push (list start length (substring source start length)) spans)
-    (nreverse spans)))
+  (save-match-data
+    (let ((start 0)
+          (length (length source))
+          spans)
+      (while (and (<= start length)
+                  (string-match lg-regex--line-separator-regexp source start))
+        (let ((sep-beg (match-beginning 0))
+              (sep-end (match-end 0)))
+          (push (list start sep-beg (substring source start sep-beg)) spans)
+          (setq start sep-end)))
+      (push (list start length (substring source start length)) spans)
+      (nreverse spans))))
 
 (defun lg-regex--traverse-list (applicative afb source)
   "Traverse SOURCE list with AFB using APPLICATIVE."
@@ -251,11 +252,11 @@ REPLACEMENT is a function called with each match string."
   (lg-prism
    (lambda (source)
      (if (and (stringp source)
-              (not (multibyte-string-p source))
-              (lg-regex--utf8-bytes-p source))
+              (not (multibyte-string-p source)))
          (condition-case nil
              (let ((text (decode-coding-string source 'utf-8)))
-               (if (lg-regex--utf8-roundtrip-ok-p source text)
+               (if (and (lg-regex--utf8-text-p text)
+                        (lg-regex--utf8-roundtrip-ok-p source text))
                    (lg-right text)
                  (lg-left source)))
            (error

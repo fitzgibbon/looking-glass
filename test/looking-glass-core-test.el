@@ -351,6 +351,51 @@
                    '(11 11 13 13)))
     (should (equal (lg-ito-list-of i-only 99) '((lg-no-index . 99))))))
 
+(ert-deftest lg-indices-receive-enclosing-index ()
+  (let ((even-indices (lg-compose-indexed lg-indexed-list
+                                          (lg-indices #'cl-evenp))))
+    (should (equal (lg-ito-list-of even-indices '(10 11 12 13))
+                   '((0 . 10) (2 . 12))))
+    (should (equal (lg-iset even-indices 'x '(10 11 12 13))
+                   '(x 11 x 13)))
+    (should (equal (lg-iover even-indices
+                             (lambda (index focus) (+ index focus))
+                             '(10 11 12 13))
+                   '(10 11 14 13)))))
+
+(ert-deftest lg-ifiltered-receives-enclosing-index ()
+  (let ((seen nil))
+    (lg-ito-list-of
+     (lg-compose-indexed lg-indexed-list
+                         (lg-ifiltered (lambda (index focus)
+                                         (push (cons index focus) seen)
+                                         nil)))
+     '(10 11 12))
+    (should (equal (nreverse seen) '((0 . 10) (1 . 11) (2 . 12)))))
+  (should (equal (lg-iover (lg-compose-indexed
+                            lg-indexed-list
+                            (lg-ifiltered (lambda (index focus)
+                                            (and (cl-evenp index)
+                                                 (> focus 10)))))
+                           (lambda (_index focus) (* 10 focus))
+                           '(10 11 12 13))
+                 '(10 11 120 13))))
+
+(ert-deftest lg-as-indexed-inherits-enclosing-index ()
+  (should (equal (lg-ito-list-of
+                  (lg-compose-indexed lg-indexed-list (lg-as-indexed lg-list))
+                  '((10 20) (30)))
+                 '((0 . 10) (0 . 20) (1 . 30)))))
+
+(ert-deftest lg-composition-operator-directions ()
+  (let ((source '((1 . 2) . 3)))
+    (should (= (lg-view (lg>> lg-car lg-cdr) source) 2))
+    (should (= (lg-view (lg<< lg-cdr lg-car) source) 2))
+    (should (equal (lg-set (lg>> lg-car lg-cdr) 9 source) '((1 . 9) . 3)))
+    (should (equal (lg-view (lg>> lg-json-parse (lg-ix "name"))
+                            "{\"name\":\"Ada\"}")
+                   "Ada"))))
+
 (ert-deftest lg-non-nil-helpers-and-macros ()
   (let* ((optic (lg-required (lg-plist-key :name)))
          (pair-optic (lg-compose lg-car lg-cdr)))
@@ -602,11 +647,38 @@
        (should (null (gethash "note" parsed))))))
 
 (ert-deftest lg-json-parse-custom-with-args ()
-  (let* ((prism (lg-json-parse-with 'alist 'list nil lg-false))
+  (let* ((prism (lg-json-parse-with 'alist 'array :null lg-false))
          (json "{\"ok\":true,\"nope\":false,\"items\":[1,2]}")
          (value (lg-view prism json)))
-    (should (equal value '((ok . lg-true) (nope . lg-false) (items 1 2))))
+    (should (equal value '((ok . lg-true) (nope . lg-false) (items . [1 2]))))
     (should (equal (lg-review prism value) json))))
+
+(ert-deftest lg-json-parse-with-rejects-ambiguous-types ()
+  (should-error (lg-json-parse-with 'alist 'list :null lg-false))
+  (should-error (lg-json-parse-with 'plist 'list :null lg-false))
+  (should-error (lg-json-parse-with 'alist 'array nil lg-false))
+  (should-error (lg-json-parse-with 'plist 'array nil lg-false))
+  (should-error (lg-json-parse-with 'hash-table 'list nil lg-false))
+  (should-error (lg-json-parse-with 'vector 'array nil lg-false)))
+
+(ert-deftest lg-json-parse-with-identity-roundtrips ()
+  (dolist (combo '((hash-table array nil)
+                   (hash-table list :null)
+                   (alist array :null)
+                   (plist array :null)))
+    (let ((prism (apply #'lg-json-parse-with (append combo (list lg-false)))))
+      (dolist (json '("[true,false]" "{}" "[]" "null"
+                      "[[1,2],[3,4]]" "[\"a\",1]"
+                      "{\"a\":null,\"b\":false,\"c\":{},\"d\":[]}"))
+        (should (equal (lg-over prism #'identity json) json))))))
+
+(ert-deftest lg-json-parse-with-tags-booleans-in-containers ()
+  (should (equal (lg-view (lg-json-parse-with 'plist 'array :null lg-false)
+                          "{\"a\":true,\"b\":[false,null]}")
+                 '(:a lg-true :b [lg-false :null])))
+  (should (equal (lg-view (lg-json-parse-with 'hash-table 'list :null lg-false)
+                          "[true,false]")
+                 '(lg-true lg-false))))
 
 (ert-deftest lg-json-parse-prism-fails-gracefully ()
   (let ((bad "{\"missing\":true")

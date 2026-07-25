@@ -1,1 +1,24 @@
 #+TITLE: looking-glass: profunctor lenses in emacs lisp
+
+* DONE Fix critical and high findings from full-repo review (review.org)
+CLOSED: [2026-07-25]
+- [X] FCR-001: thread enclosing index through the indexed Star profunctor so
+  ~lg-ifiltered~/~lg-indices~ receive real indices; composed-index tests.
+- [X] FCR-002: type-driven JSON normalization dispatching on declared
+  object/array types; reject ambiguous configurations at construction;
+  round-trip tests for all accepted combinations.
+- [X] FCR-003: ~lg-utf8~ accepts ASCII bytes (raw-byte-character check
+  replaces the ~detect-coding-string~ gate); ASCII round-trip test.
+- [X] FCR-004: ~save-match-data~ around regex span collection; regression
+  test for caller match data.
+- [X] FCR-005: ~lg>>~ composes outermost-to-innermost like ~lg-compose~,
+  ~lg<<~ reversed; docstrings, manual, direction tests.
+
+* TODO Remaining review findings (see review.org for details)
+- [ ] Medium bugs: FCR-006 (Either prisms crash on non-cons), FCR-007
+  (~lg-review~ swallows errors), FCR-008 (inert ~:search-whitespace-regexp~).
+- [ ] Low bugs: FCR-009, FCR-010, FCR-011.
+- [ ] Design: FCR-012..FCR-021 (index-combining composition, seam errors,
+  getter/review asymmetry, slice law caveat, MELPA packaging).
+- [ ] Feature gaps: FCR-022 (~laws.org~), FCR-023 (~lg-slice~ beyond lists).
+- [ ] Tech debt: FCR-024..FCR-040.

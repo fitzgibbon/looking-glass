@@ -163,99 +163,98 @@ Signals when EITHER is not a tagged either value."
   "Map FN over VECTOR-VALUE preserving vector shape."
   (vconcat (mapcar fn (append vector-value nil))))
 
-(defun lg--json-normalize-from-parser (value false-object)
-  "Normalize parser VALUE into looking-glass JSON domain.
-Map booleans to `lg-true'/`lg-false' and preserve nil for JSON null.
-FALSE-OBJECT is the parser representation for false values."
-  (cond
-   ((eq value t) lg-true)
-   ((equal value false-object) lg-false)
-   ((hash-table-p value)
-    (let ((copy (copy-hash-table value)))
-      (maphash (lambda (key item)
-                 (puthash key (lg--json-normalize-from-parser item false-object) copy))
-               value)
-      copy))
-   ((and (listp value) (cl-every #'consp value))
-    (mapcar (lambda (entry)
-              (cons (car entry)
-                    (lg--json-normalize-from-parser (cdr entry) false-object)))
-            value))
-   ((and (listp value)
-         (zerop (% (length value) 2))
-         (cl-loop for rest on value by #'cddr
-                  always (symbolp (car rest))))
-    (let ((rest value)
-          (result nil))
-      (while rest
-        (setq result
-              (append result
-                      (list (car rest)
-                            (lg--json-normalize-from-parser (cadr rest) false-object))))
-        (setq rest (cddr rest)))
-      result))
-   ((vectorp value)
-    (lg--json-map-values-vector
-     value
-     (lambda (item)
-       (lg--json-normalize-from-parser item false-object))))
-   ((listp value)
-    (lg--json-map-values-list
-     value
-     (lambda (item)
-       (lg--json-normalize-from-parser item false-object))))
-   (t value)))
+(defun lg--json-validate-types (object-type array-type null-object)
+  "Signal unless OBJECT-TYPE, ARRAY-TYPE and NULL-OBJECT are distinguishable.
+Rejects configurations whose value representations overlap, since
+those cannot round-trip: alist/plist objects combined with list
+arrays, and list-shaped containers whose empty case collides with a
+nil NULL-OBJECT."
+  (unless (memq object-type '(hash-table alist plist))
+    (error "lg-json-parse-with: unsupported OBJECT-TYPE %S" object-type))
+  (unless (memq array-type '(array list))
+    (error "lg-json-parse-with: unsupported ARRAY-TYPE %S" array-type))
+  (when (and (memq object-type '(alist plist)) (eq array-type 'list))
+    (error "lg-json-parse-with: %S objects and list arrays are ambiguous"
+           object-type))
+  (when (and (or (memq object-type '(alist plist)) (eq array-type 'list))
+             (null null-object))
+    (error "lg-json-parse-with: %S/%S requires a non-nil NULL-OBJECT"
+           object-type array-type)))
 
-(defun lg--json-normalize-for-serializer (value false-object)
+(defun lg--json-normalize-from-parser (value object-type array-type false-object)
+  "Normalize parser VALUE into the looking-glass JSON domain.
+Map booleans to `lg-true'/`lg-false', dispatching containers on the
+declared OBJECT-TYPE and ARRAY-TYPE rather than value structure.
+FALSE-OBJECT is the parser representation for false values."
+  (let ((recurse (lambda (item)
+                   (lg--json-normalize-from-parser
+                    item object-type array-type false-object))))
+    (cond
+     ((eq value t) lg-true)
+     ((equal value false-object) lg-false)
+     ((hash-table-p value)
+      (let ((copy (copy-hash-table value)))
+        (maphash (lambda (key item) (puthash key (funcall recurse item) copy))
+                 value)
+        copy))
+     ((vectorp value)
+      (lg--json-map-values-vector value recurse))
+     ((and (eq object-type 'alist) (consp value))
+      (mapcar (lambda (entry)
+                (cons (car entry) (funcall recurse (cdr entry))))
+              value))
+     ((and (eq object-type 'plist) (consp value))
+      (cl-loop for (key item) on value by #'cddr
+               nconc (list key (funcall recurse item))))
+     ((and (eq array-type 'list) (consp value))
+      (lg--json-map-values-list value recurse))
+     (t value))))
+
+(defun lg--json-normalize-for-serializer (value object-type array-type false-object)
   "Normalize VALUE for `json-serialize'.
-Map `lg-true'/`lg-false' to serializer booleans and ensure arrays are vectors.
-FALSE-OBJECT is the serializer representation for false values."
-  (cond
-   ((eq value lg-true) t)
-   ((eq value lg-false) false-object)
-   ((hash-table-p value)
-    (let ((copy (copy-hash-table value)))
-      (maphash (lambda (key item)
-                 (puthash key (lg--json-normalize-for-serializer item false-object) copy))
-               value)
-      copy))
-   ((and (listp value) (cl-every #'consp value))
-    (mapcar (lambda (entry)
-              (cons (car entry)
-                    (lg--json-normalize-for-serializer (cdr entry) false-object)))
-            value))
-   ((and (listp value)
-         (zerop (% (length value) 2))
-         (cl-loop for rest on value by #'cddr
-                  always (symbolp (car rest))))
-    (let ((rest value)
-          (result nil))
-      (while rest
-        (setq result
-              (append result
-                      (list (car rest)
-                            (lg--json-normalize-for-serializer (cadr rest) false-object))))
-        (setq rest (cddr rest)))
-      result))
-   ((vectorp value)
-    (lg--json-map-values-vector
-     value
-     (lambda (item)
-       (lg--json-normalize-for-serializer item false-object))))
-   ((listp value)
-    (vconcat
-     (mapcar (lambda (item)
-               (lg--json-normalize-for-serializer item false-object))
-             value)))
-   (t value)))
+Map `lg-true'/`lg-false' to serializer booleans, dispatch containers
+on the declared OBJECT-TYPE and ARRAY-TYPE, and convert list arrays
+to the vectors `json-serialize' requires.  FALSE-OBJECT is the
+serializer representation for false values."
+  (let ((recurse (lambda (item)
+                   (lg--json-normalize-for-serializer
+                    item object-type array-type false-object))))
+    (cond
+     ((eq value lg-true) t)
+     ((eq value lg-false) false-object)
+     ((hash-table-p value)
+      (let ((copy (copy-hash-table value)))
+        (maphash (lambda (key item) (puthash key (funcall recurse item) copy))
+                 value)
+        copy))
+     ((vectorp value)
+      (lg--json-map-values-vector value recurse))
+     ((and (eq object-type 'alist) (consp value))
+      (mapcar (lambda (entry)
+                (cons (car entry) (funcall recurse (cdr entry))))
+              value))
+     ((and (eq object-type 'plist) (consp value))
+      (cl-loop for (key item) on value by #'cddr
+               nconc (list key (funcall recurse item))))
+     ((and (eq array-type 'list) (listp value))
+      (vconcat (mapcar recurse value)))
+     (t value))))
 
 (defun lg-json-parse-with (object-type array-type &optional null-object false-object)
   "Return a prism between JSON text and Elisp values.
-OBJECT-TYPE and ARRAY-TYPE are passed to `json-parse-string'.
-NULL-OBJECT and FALSE-OBJECT are used for parse/render, defaulting to nil and `lg-false'.
-Values are normalized so booleans become `lg-true'/`lg-false'."
+OBJECT-TYPE (`hash-table', `alist' or `plist') and ARRAY-TYPE
+\(`array' or `list') are passed to `json-parse-string'.  NULL-OBJECT
+and FALSE-OBJECT default to nil and `lg-false'.  Values are
+normalized so booleans become `lg-true'/`lg-false'.
+
+Only distinguishable configurations are accepted: alist/plist
+objects cannot be combined with list arrays, and any list-shaped
+container type requires a non-nil NULL-OBJECT (for example `:null'),
+because their empty representations would otherwise collide and the
+prism could not round-trip."
   (let ((null-value (if (null null-object) nil null-object))
         (false-value (if (null false-object) lg-false false-object)))
+    (lg--json-validate-types object-type array-type null-value)
     (lg-prism
      (lambda (json-text)
        (if (stringp json-text)
@@ -267,12 +266,13 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
                                     :array-type array-type
                                     :null-object null-value
                                     :false-object false-value)
-                 false-value))
+                 object-type array-type false-value))
              (error (lg-left json-text)))
          (lg-left json-text)))
      (lambda (value)
        (json-serialize
-        (lg--json-normalize-for-serializer value false-value)
+        (lg--json-normalize-for-serializer
+         value object-type array-type false-value)
         :null-object null-value
         :false-object false-value)))))
 
@@ -400,42 +400,45 @@ Values are normalized so booleans become `lg-true'/`lg-false'."
 
 (defun lg--indexed-star-profunctor (applicative)
   "Return Star profunctor for indexed optics over APPLICATIVE.
-The mapping function receives (INDEX FOCUS)."
+The mapping function receives (INDEX FOCUS).  The index supplied by
+an enclosing optic is threaded through each combinator so inner
+optics can observe or replace it."
   (let ((fmap (lg-applicative-fmap applicative)))
     (make-lg-profunctor
      :dimap (lambda (before after indexed-pib)
               (make-lg-indexed
-               :run (lambda (_index value)
+               :run (lambda (index value)
                       (funcall fmap
                                after
                                (funcall (lg-indexed-run indexed-pib)
-                                        lg-no-index
+                                        index
                                         (funcall before value))))))
      :first (lambda (indexed-pib)
               (make-lg-indexed
-               :run (lambda (_index pair)
+               :run (lambda (index pair)
                       (let ((left (car pair))
                             (right (cdr pair)))
                         (funcall fmap
                                  (lambda (new-left) (cons new-left right))
                                  (funcall (lg-indexed-run indexed-pib)
-                                          lg-no-index
+                                          index
                                           left))))))
      :right (lambda (indexed-pib)
               (make-lg-indexed
-               :run (lambda (_index either)
+               :run (lambda (index either)
                       (if (lg-right-p either)
                           (funcall fmap
                                    (lambda (new-right) (lg-right new-right))
                                    (funcall (lg-indexed-run indexed-pib)
-                                            lg-no-index
+                                            index
                                             (cdr either)))
                         (funcall (lg-applicative-pure applicative)
                                  (lg-left (cdr either)))))))
      :wander (lambda (wander-fn indexed-pib)
                (make-lg-indexed
-                :run (lambda (_index value)
+                :run (lambda (index value)
                        (funcall wander-fn
+                                index
                                 (lambda (index focus)
                                   (funcall (lg-indexed-run indexed-pib)
                                            index
@@ -674,22 +677,23 @@ The resulting optic focuses through INNER first, then OUTER."
                      (funcall (lg-optic-apply inner) p pab)))))
 
 (defun lg-compose (&rest optics)
-  "Compose OPTICS from right to left.
-`(lg-compose o1 o2 o3)' means `o1' after `o2' after `o3'."
+  "Compose OPTICS from outermost to innermost.
+`(lg-compose o1 o2 o3)' focuses through `o1' first, then `o2'
+inside it, then `o3' — the same order the data is drilled into."
   (if optics
       (let ((result (car (last optics))))
         (dolist (optic (reverse (butlast optics)) result)
           (setq result (lg-compose2 optic result))))
     lg-id))
 
-(defun lg<< (&rest optics)
-  "Compose OPTICS from right to left.
-This is syntactic sugar for `lg-compose'."
+(defun lg>> (&rest optics)
+  "Compose OPTICS from outermost to innermost, like `lg-compose'.
+`(lg>> a b c)' drills through `a' first, then `b', then `c'."
   (apply #'lg-compose optics))
 
-(defun lg>> (&rest optics)
-  "Compose OPTICS from left to right.
-`(lg>> a b c)' is equivalent to `(lg-compose c b a)'."
+(defun lg<< (&rest optics)
+  "Compose OPTICS from innermost to outermost.
+`(lg<< a b c)' is equivalent to `(lg-compose c b a)'."
   (apply #'lg-compose (reverse optics)))
 
 (defun lg-compose-indexed2 (outer inner)
@@ -1004,8 +1008,12 @@ WANDER-FN is called as (WANDER-FN afb source applicative)."
 
 (defun lg-indexed (wander-fn)
   "Build an indexed traversal from WANDER-FN.
-WANDER-FN is called as (WANDER-FN iafb source applicative), where
-IAFB is called as (IAFB index focus)."
+WANDER-FN is called as (WANDER-FN index iafb source applicative),
+where INDEX is the index supplied by the enclosing optic
+\(`lg-no-index' at top level) and IAFB is called as (IAFB index
+focus).  Optics that generate their own indices ignore INDEX, so
+composition keeps the innermost index; pass-through combinators such
+as `lg-ifiltered' forward it."
   (make-lg-indexed-optic
    :apply (lambda (p indexed-pib)
             (let ((wander (lg-profunctor-wander p)))
@@ -1023,15 +1031,16 @@ IAFB is called as (IAFB index focus)."
               (lg--run-indexed-optic optic p (funcall reindex index-fn indexed-pib))))))
 
 (defun lg-as-indexed (optic)
-  "Lift unindexed OPTIC into an indexed optic with `lg-no-index'."
+  "Lift unindexed OPTIC into an indexed optic.
+Focuses inherit the enclosing index (`lg-no-index' at top level)."
   (lg-indexed
-   (lambda (iafb source applicative)
+   (lambda (index iafb source applicative)
       (let* ((profunctor (lg--star-profunctor applicative))
              (transform (lg--run-optic
                          optic
                          profunctor
                          (lambda (focus)
-                           (funcall iafb lg-no-index focus)))))
+                           (funcall iafb index focus)))))
         (funcall transform source)))))
 
 (defun lg-unindexed (optic)
@@ -1067,22 +1076,25 @@ Setter-like operations leave the source unchanged."
 
 (defun lg-ifiltered (predicate)
   "Indexed traversal that focuses only values satisfying PREDICATE.
-PREDICATE is called as (PREDICATE index focus)."
+PREDICATE is called as (PREDICATE index focus), where INDEX is the
+index supplied by the enclosing optic (`lg-no-index' at top level)."
   (lg-indexed
-   (lambda (iafb source applicative)
-      (if (funcall predicate lg-no-index source)
-          (funcall iafb lg-no-index source)
+   (lambda (index iafb source applicative)
+      (if (funcall predicate index source)
+          (funcall iafb index source)
         (funcall (lg-applicative-pure applicative) source)))))
 
 (defun lg-indices (predicate)
-  "Indexed traversal that focuses when index matches PREDICATE."
+  "Indexed traversal that focuses when the enclosing index matches PREDICATE.
+Compose after an index-producing optic, for example
+\(lg-compose-indexed lg-indexed-list (lg-indices #\\='cl-evenp))."
   (lg-ifiltered (lambda (index _focus) (funcall predicate index))))
 
 (defun lg-indexed-list-filtered (predicate)
   "Indexed list traversal focused by PREDICATE.
 PREDICATE is called as (PREDICATE index focus)."
   (lg-indexed
-   (lambda (iafb source applicative)
+   (lambda (_index iafb source applicative)
      (lg--traverse-list-indexed
       applicative
       (lambda (index focus)
@@ -1767,13 +1779,13 @@ Signals when OPTIC cannot be interpreted under Re constraints."
 
 (defconst lg-indexed-list
   (lg-indexed
-   (lambda (iafb source applicative)
+   (lambda (_index iafb source applicative)
      (lg--traverse-list-indexed applicative iafb source)))
   "Indexed traversal over all elements in a list.")
 
 (defconst lg-indexed-vector
   (lg-indexed
-   (lambda (iafb source applicative)
+   (lambda (_index iafb source applicative)
      (let ((fmap (lg-applicative-fmap applicative)))
        (funcall fmap
                 #'vconcat
@@ -1807,7 +1819,7 @@ Signals when OPTIC cannot be interpreted under Re constraints."
 
 (defconst lg-indexed-string
   (lg-indexed
-   (lambda (iafb source applicative)
+   (lambda (_index iafb source applicative)
      (let ((fmap (lg-applicative-fmap applicative)))
        (funcall fmap
                 (lambda (parts) (apply #'concat parts))
