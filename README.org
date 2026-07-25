@@ -104,7 +104,5 @@ what ~M-x info-display-manual~ needs in installed packages.
 * Tests
 
 #+begin_src sh
-emacs -Q --batch -L . -L test \
-  -l test/looking-glass-test.el \
-  -f ert-run-tests-batch-and-exit
+scripts/run-tests.sh
 #+end_src

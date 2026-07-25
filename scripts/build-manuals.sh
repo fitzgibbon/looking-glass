@@ -19,7 +19,7 @@ dir_file="${INFO_DIR}/dir"
 
 if command -v install-info >/dev/null 2>&1; then
   for info_file in "${INFO_DIR}"/*.info; do
-    install-info --dir-file="${dir_file}" "${info_file}" >/dev/null 2>&1
+    install-info --dir-file="${dir_file}" "${info_file}"
   done
 else
   echo "install-info not found; skipping dir menu generation"

@@ -54,10 +54,11 @@ membership.
   UTF-8 text containing no raw-byte characters and re-encode to the same
   bytes. Within that domain both prism laws hold, including for
   pure-ASCII byte strings.
-- ~lg-at~ on plists/alists with duplicate keys :: deleting a key removes
-  only the first binding, so a shadowed binding becomes visible and
-  ~preview~ after deletion can still return a value. Keyed optics assume
-  unique keys; ~lg-alist-plist~ enforces uniqueness for its own domain.
+- ~lg-at~ on plists/alists with duplicate keys :: deletion removes every
+  binding of the key (so get-after-delete is ~lg-nothing~, as the at-lens
+  law requires), but updates rewrite only the first binding — which is
+  the one reads see, so get-set and set-get hold. Shadowed duplicates are
+  preserved by updates.
 - ~lg-getter~ :: setter-like operations through a getter leave the source
   unchanged (a documented no-op), whereas viewing through a pure review
   (~lg-unto~) signals. The asymmetry is deliberate: getters are usable

@@ -31,12 +31,18 @@ CLOSED: [2026-07-25]
   purity policy).
 - [X] Opportunistic: FCR-011, FCR-020, FCR-035, part of FCR-034.
 
-* TODO Remaining low/informational review findings (see review.org)
-- [ ] Low bugs: FCR-009 (~lg-ix~ on odd-length lists), FCR-010
-  (duplicate-key plist deletion).
-- [ ] Design: FCR-017 (alias consolidation), FCR-018 (~lg-just-o~ tag),
-  FCR-019 (container classification docs).
-- [ ] Feature gap: FCR-023 (~lg-slice~ beyond lists).
-- [ ] Tech debt: FCR-033 (dead Stall/Forget encoding machinery — now
-  including the unused ~lg--stall-profunctor~), FCR-034 remainder,
-  FCR-036, FCR-037 (checkdoc), FCR-038, FCR-040.
+* DONE Fix low/informational findings from full-repo review (review.org)
+CLOSED: [2026-07-25]
+- [X] Low bugs: FCR-009 (descriptive error for non-keyed lists), FCR-010
+  (deletion removes duplicate keys).
+- [X] Design: FCR-017 (aliases deleted), FCR-018 (~lg-just-o~ retagged),
+  FCR-019 (classification documented).
+- [X] Feature gap: FCR-023 (~lg-slice~ for vectors and strings).
+- [X] Tech debt: FCR-033 (dead machinery deleted), FCR-034 (headers,
+  deps), FCR-036 (caveat docstrings), FCR-037 (checkdoc clean + CI step),
+  FCR-038 (~scripts/run-tests.sh~, install-info diagnostics), FCR-040
+  (~json-available-p~ check, caveats documented).
+
+* TODO Future work
+- [ ] Forget-style short-circuit for ~lg-preview~ (folds currently visit
+  all focuses; noted under FCR-024).

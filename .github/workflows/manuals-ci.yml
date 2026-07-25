@@ -19,15 +19,24 @@ jobs:
 
       - name: Run test suite
         run: |
-          emacs -Q --batch -L . -L test \
-            -l test/looking-glass-test.el \
-            -f ert-run-tests-batch-and-exit
+          scripts/run-tests.sh
 
       - name: Byte-compile with warnings as errors
         run: |
           emacs -Q --batch -L . \
             --eval '(setq byte-compile-error-on-warn t)' \
             -f batch-byte-compile looking-glass.el looking-glass-regex.el
+
+      - name: Checkdoc
+        run: |
+          output="$(emacs -Q --batch --eval \
+            '(progn (require (quote checkdoc))
+                    (setq checkdoc-diagnostic-buffer "*warn*")
+                    (dolist (f (list "looking-glass.el" "looking-glass-regex.el"))
+                      (checkdoc-file f))
+                    (with-current-buffer "*warn*" (princ (buffer-string))))' 2>&1)"
+          echo "$output"
+          ! echo "$output" | grep -q ':[0-9]'
 
       - name: Build manuals from org
         run: |

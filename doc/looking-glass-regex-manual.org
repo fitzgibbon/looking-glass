@@ -53,8 +53,8 @@ By default regex optics bind ~case-fold-search~ to nil and use ~standard-syntax-
 
 * Word and line traversals
 
-- ~lg-worded~: traversal over ~\\w+~ segments.
-- ~lg-worded-regexp~: configurable word-like traversal.
+- ~lg-worded~: traversal over ~\\w+~ segments; use ~lg-regex-all~ with a
+  custom regexp for other word shapes.
 - ~lg-lined~: traversal over line content that preserves original line separators.
 
 ~lg-lined~ supports mixed separators (~\n~, ~\r\n~, ~\r~, vertical tab, form feed, NEL, U+2028, U+2029) while keeping separators unchanged during updates.

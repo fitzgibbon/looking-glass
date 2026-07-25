@@ -46,7 +46,7 @@ Supported keys are :case-fold, :search-spaces-regexp, and
        (equal bytes (encode-coding-string text 'utf-8 t))))
 
 (defun lg-regex--utf8-text-p (text)
-  "Return non-nil when TEXT contains no raw-byte characters.
+  "Return non-nil when TEXT is free of raw-byte characters.
 Undecodable bytes decode to characters above the Unicode range."
   (cl-every (lambda (char) (<= char #x10FFFF)) text))
 
@@ -73,7 +73,7 @@ Each result is a list (BEG END TEXT)."
 
 (defun lg-regex--replace-spans (source spans replacements)
   "Replace SPANS in SOURCE with REPLACEMENTS.
-SPANS is a list of (BEG END TEXT). REPLACEMENTS aligns 1:1 with SPANS."
+SPANS is a list of (BEG END TEXT).  REPLACEMENTS aligns 1:1 with SPANS."
   (let ((cursor 0)
         (parts nil))
     (cl-mapc (lambda (span replacement)
@@ -178,10 +178,6 @@ REPLACEMENT is a function called with each match string."
 (defconst lg-worded
   (lg-regex-all "\\w+")
   "Traversal focusing word-like segments using Emacs regex `\\w+'.")
-
-(defun lg-worded-regexp (regexp)
-  "Traversal focusing word-like segments matching REGEXP."
-  (lg-regex-all regexp))
 
 (defconst lg-lined
   (lg-traversal

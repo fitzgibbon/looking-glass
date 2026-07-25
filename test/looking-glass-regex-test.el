@@ -53,13 +53,13 @@
     (should (equal (lg-preview (lg-regex-match "\\sw+" :syntax-table custom) "abc")
                    lg-nothing))))
 
-(ert-deftest lg-worded-and-worded-regexp ()
+(ert-deftest lg-worded-and-custom-word-traversals ()
   (should (equal (lg-to-list-of lg-worded "Ada Lovelace 1843")
                  '("Ada" "Lovelace" "1843")))
   (should (equal (lg-over lg-worded #'downcase "Ada LOVELACE")
                  "ada lovelace"))
   (let ((case-fold-search nil))
-    (should (equal (lg-to-list-of (lg-worded-regexp "[A-Z][a-z]+") "Ada LOVELACE Byron")
+    (should (equal (lg-to-list-of (lg-regex-all "[A-Z][a-z]+") "Ada LOVELACE Byron")
                    '("Ada" "Byron")))))
 
 (ert-deftest lg-lined-preserves-mixed-unicode-separators ()

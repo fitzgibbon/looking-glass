@@ -107,6 +107,44 @@ stated in three places rather than five).
 Suite after medium fixes: 68/68 tests pass; byte-compile clean with
 warnings-as-errors; manual build verified.
 
+* Round 1 remediation status — low and informational findings
+
+- FCR-009 :: *fixed* — non-keyed lists now signal "Not a keyed list
+  (expected plist or alist)" instead of an internal dispatch error.
+- FCR-010 :: *fixed* — ~lg-at~ deletion removes every binding of the key,
+  so get-after-delete satisfies the at-lens law; laws.org updated.
+- FCR-017 :: *fixed* — pure aliases deleted (~lg-map-of~, ~lg-for-of~,
+  ~lg-imap-of~, ~lg-ifor-of~, ~lg-hash-key~, ~lg-hash-key-at~,
+  ~lg-first-of~, ~lg-ifirst-of~, ~lg-worded-regexp~). ~lg>>~/~lg<<~
+  remain as they now denote opposite orders.
+- FCR-018 :: *fixed* — ~lg-just-o~ is a prism over the library's own
+  tagged Maybe ~(lg-just . VALUE)~; the bare ~just~ encoding is gone.
+- FCR-019 :: *fixed* — list classification rules documented in
+  ~lg-ix~/~lg-at~ docstrings, including the empty-list-builds-alist rule.
+- FCR-023 :: *fixed* — ~lg-slice~ supports vectors and strings with a
+  shared bounds check; manual updated.
+- FCR-033 :: *fixed* — dead machinery deleted (~lg-bazaar~, ~lg-forget~,
+  ~lg-stall~ structs; function/Forget/Stall profunctors) along with the
+  test pinning it; the representation comment now describes only what is
+  used.
+- FCR-034 :: *addressed* — ~URL:~ headers present, ~cl-lib~ dependency
+  dropped, ~-pkg.el~ files gone; the version now appears only in the two
+  mandatory headers and the cross-package dependency pin.
+- FCR-036 :: *fixed* — law caveats added to ~lg-number-string~ and
+  ~lg-symbol-string~ docstrings (and laws.org).
+- FCR-037 :: *fixed* — checkdoc is clean on both packages; every
+  ~cl-defmethod~ has a docstring; CI now runs checkdoc.
+- FCR-038 :: *fixed* — ~scripts/run-tests.sh~ replaces the four copies of
+  the test incantation; ~install-info~ diagnostics are no longer
+  suppressed.
+- FCR-039 :: *resolved* — plan.org actively tracks the remediation work.
+- FCR-040 :: *fixed* — ~lg-json-parse-with~ checks ~json-available-p~ at
+  construction; formatting/case-fold caveats documented in laws.org and
+  the manuals.
+
+Suite after low/informational fixes: 70/70 tests pass; byte-compile and
+checkdoc clean.
+
 * Context used
 
 - Target :: local repo, 18 files, ~3,470 lines (no PR; entire codebase)

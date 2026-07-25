@@ -107,6 +107,7 @@ Useful indexed combinators:
 - ~lg-iover~, ~lg-iset~, ~lg-ito-list-of~
 - ~lg-ireindexed~, ~lg-as-indexed~, ~lg-unindexed~
 - ~lg-ifiltered~, ~lg-indices~, ~lg-indexed-list-filtered~
+- ~lg-icompose-with~ (compose while combining outer and inner indices)
 
 ~lg-ifiltered~ and ~lg-indices~ see the index supplied by the enclosing
 optic, so they filter by position when composed after an
@@ -122,13 +123,16 @@ index-producing optic:
 When indexed optics that generate their own indices are composed, the
 innermost index wins; at top level the index is ~lg-no-index~.
 
-* List slice lens
+* Slice optic
 
-~lg-slice~ is a list lens over range ~[START, END)~.
+~lg-slice~ focuses range ~[START, END)~ of a list, vector, or string.
 
-- Viewing returns the selected sublist.
-- Setting replaces the selected range.
+- Viewing returns the selected subsequence.
+- Setting replaces the selected range with a sequence of the same
+  container type.
 - Insertion is a replacement where ~START == END~.
+- It is a lawful lens only for length-preserving writes (see
+  ~laws.org~).
 
 #+begin_src emacs-lisp
 (let ((numbers '(1 2 3)))
@@ -223,7 +227,5 @@ Key points:
 * Testing
 
 #+begin_src sh
-emacs -Q --batch -L . -L test \
-  -l test/looking-glass-test.el \
-  -f ert-run-tests-batch-and-exit
+scripts/run-tests.sh
 #+end_src
