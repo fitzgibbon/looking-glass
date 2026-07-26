@@ -116,6 +116,127 @@ Required and optional properties use the same existing-property optic.  On
 conforming data, a required property is present.  On nonconforming data, a
 missing property has no focus and an update leaves the source unchanged.
 
+* Practical recipes
+
+** Use one schema for parsed values and JSON text
+
+A generated set keeps both variants at the same path.  Select the variant at
+lookup time:
+
+#+begin_src emacs-lisp
+(let* ((schema '(:properties (:status (:type "string"))))
+       (set (lg-json-schema-generate schema
+                                     :object-type 'plist
+                                     :null-object :null))
+       (parsed-status (lg-json-schema-optic set "/status"))
+       (text-status (lg-json-schema-optic set "/status" 'text)))
+  (list (lg-over parsed-status #'upcase '(:status "ready"))
+        (lg-over text-status #'upcase "{\"status\":\"ready\"}")))
+;; => ((:status "READY") "{\"status\":\"READY\"}")
+#+end_src
+
+** Update every nested array member
+
+The ~*~ token denotes a generated homogeneous-array traversal.  Multiple
+array levels compose naturally:
+
+#+begin_src emacs-lisp
+(let* ((schema
+        '(:properties
+          (:teams
+           (:items
+            (:properties
+             (:members
+              (:items
+               (:properties (:active (:type "boolean"))))))))))
+       (set (lg-json-schema-generate schema
+                                     :object-type 'plist
+                                     :null-object :null))
+       (active (lg-json-schema-optic set "/teams/*/members/*/active")))
+  (lg-set active lg-true
+          '(:teams [(:members [(:active lg-false) (:active lg-false)])
+                    (:members [(:active lg-false)])])))
+;; => (:teams [(:members [(:active lg-true) (:active lg-true)])
+;;             (:members [(:active lg-true)])])
+#+end_src
+
+** Compose generated and handwritten optics
+
+A generated optic is an ordinary looking-glass optic.  Compose it with core
+prisms, traversals, and conversions:
+
+#+begin_src emacs-lisp
+(let* ((schema
+        '(:properties (:ports (:items (:type "string")))))
+       (set (lg-json-schema-generate schema
+                                     :object-type 'plist
+                                     :null-object :null))
+       (port-numbers
+        (lg-compose (lg-json-schema-optic set "/ports/*")
+                    lg-number-string)))
+  (lg-over port-numbers (apply-partially #'+ 1000)
+           '(:ports ["80" "443"])))
+;; => (:ports ["1080" "1443"])
+#+end_src
+
+** Edit a tuple position
+
+~prefixItems~ produces one optic for each declared position:
+
+#+begin_src emacs-lisp
+(let* ((schema
+        '(:properties
+          (:coordinate
+           (:prefixItems [(:type "number")
+                          (:type "number")
+                          (:type "string")]))))
+       (set (lg-json-schema-generate schema
+                                     :object-type 'plist
+                                     :null-object :null))
+       (label (lg-json-schema-optic set "/coordinate/2")))
+  (lg-over label #'capitalize '(:coordinate [51.5 -0.1 "london"])))
+;; => (:coordinate [51.5 -0.1 "London"])
+#+end_src
+
+** Reuse a definition through a local reference
+
+Locations beneath local references are generated at their instance paths, not
+at their ~$defs~ declaration paths:
+
+#+begin_src emacs-lisp
+(let* ((schema
+        '(:$defs
+          (:address (:properties (:city (:type "string"))))
+          :properties
+          (:billing (:$ref "#/$defs/address")
+           :shipping (:$ref "#/$defs/address"))))
+       (set (lg-json-schema-generate schema
+                                     :object-type 'plist
+                                     :null-object :null)))
+  (list (lg-json-schema-paths set)
+        (lg-over (lg-json-schema-optic set "/shipping/city")
+                 #'upcase
+                 '(:billing (:city "London")
+                   :shipping (:city "Paris")))))
+;; => (("" "/billing" "/billing/city" "/shipping" "/shipping/city")
+;;     (:billing (:city "London") :shipping (:city "PARIS")))
+#+end_src
+
+** Inspect generated paths before choosing an optic
+
+Path discovery is useful in interactive code and schema tooling:
+
+#+begin_src emacs-lisp
+(let ((set (lg-json-schema-generate
+            '(:properties
+              (:name (:type "string")
+               :tags (:items (:type "string"))))
+            :object-type 'plist
+            :null-object :null)))
+  (lg-json-schema-paths set))
+;; => ("" "/name" "/tags" "/tags/*")
+#+end_src
+
 * References and limits
 
 Only local references are expanded.  External references signal an error
