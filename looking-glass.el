@@ -1786,6 +1786,177 @@ focuses the first is returned; use `lg-to-list-of' for all of them."
         value
       (signal 'lg-expected-non-nil (list optic source)))))
 
+(defun lg--compile-over (optic fn)
+  "Compile unindexed OPTIC and FN into a source transformation."
+  (lg--check-optic optic)
+  (let* ((app (lg--identity-applicative))
+         (profunctor (lg--identity-star-profunctor app))
+         (transform (lg--run-optic
+                     optic
+                     profunctor
+                     (lambda (focus)
+                       (make-lg-identity :value (funcall fn focus))))))
+    (lambda (source)
+      (lg-identity-value (funcall transform source)))))
+
+(defun lg--compile-iover (optic fn)
+  "Compile indexed OPTIC and FN into a source transformation."
+  (lg--check-indexed-optic optic)
+  (let* ((app (lg--identity-applicative))
+         (profunctor (lg--indexed-star-profunctor app))
+         (transform (lg--run-indexed-optic
+                     optic
+                     profunctor
+                     (make-lg-indexed
+                      :run (lambda (index focus)
+                             (make-lg-identity
+                              :value (funcall fn index focus)))))))
+    (lambda (source)
+      (lg-identity-value
+       (funcall (lg-indexed-run transform) lg-no-index source)))))
+
+(defun lg--compile-to-list (optic)
+  "Compile unindexed OPTIC into a focus collector."
+  (lg--check-optic optic)
+  (let* ((app (lg--const-applicative lg--list-builder-monoid))
+         (profunctor (lg--star-profunctor app))
+         (transform (lg--run-optic
+                     optic
+                     profunctor
+                     (lambda (focus)
+                       (make-lg-const :value (lg--fold-leaf focus))))))
+    (lambda (source)
+      (lg--fold-tree-list (lg-const-value (funcall transform source))))))
+
+(defun lg--compile-ito-list (optic)
+  "Compile indexed OPTIC into an indexed-focus collector."
+  (lg--check-indexed-optic optic)
+  (let* ((app (lg--const-applicative lg--list-builder-monoid))
+         (profunctor (lg--indexed-star-profunctor app))
+         (pib (make-lg-indexed
+               :run (lambda (index focus)
+                      (make-lg-const
+                       :value (lg--fold-leaf (cons index focus))))))
+         (transform (lg--run-indexed-optic optic profunctor pib)))
+    (lambda (source)
+      (lg--fold-tree-list
+       (lg-const-value
+        (funcall (lg-indexed-run transform) lg-no-index source))))))
+
+(defun lg--compile-fold-map (optic monoid fn)
+  "Compile unindexed OPTIC, MONOID, and FN into a fold runner."
+  (lg--check-optic optic)
+  (let* ((app (lg--const-applicative monoid))
+         (profunctor (lg--star-profunctor app))
+         (transform (lg--run-optic
+                     optic
+                     profunctor
+                     (lambda (focus)
+                       (make-lg-const :value (funcall fn focus))))))
+    (lambda (source)
+      (lg-const-value (funcall transform source)))))
+
+(defun lg--compile-ifold-map (optic monoid fn)
+  "Compile indexed OPTIC, MONOID, and FN into a fold runner."
+  (lg--check-indexed-optic optic)
+  (let* ((app (lg--const-applicative monoid))
+         (profunctor (lg--indexed-star-profunctor app))
+         (pib (make-lg-indexed
+               :run (lambda (index focus)
+                      (make-lg-const :value (funcall fn index focus)))))
+         (transform (lg--run-indexed-optic optic profunctor pib)))
+    (lambda (source)
+      (lg-const-value
+       (funcall (lg-indexed-run transform) lg-no-index source)))))
+
+(defun lg--compile-required-arguments (operation arguments count)
+  "Return ARGUMENTS when OPERATION received exactly COUNT arguments."
+  (unless (= (length arguments) count)
+    (error "LG compile operation %S requires %d argument%s, got %d"
+           operation count (if (= count 1) "" "s") (length arguments)))
+  arguments)
+
+(defun lg-compile (optic operation &rest arguments)
+  "Compile OPTIC for reusable OPERATION and ARGUMENTS into a source function.
+
+OPERATION selects a fixed interpretation.  `over' takes FN and returns
+a function from SOURCE to UPDATED-SOURCE; `set' takes VALUE and returns
+the same.
+`to-list', `preview', `view', and `has' take no further arguments and
+return (SOURCE -> RESULT).  `fold-map' takes MONOID and FN.
+
+Indexed counterparts are `iover', `iset', `ito-list', `ipreview',
+`iview', `ihas', and `ifold-map'.  Their update and fold functions
+receive INDEX before FOCUS.
+
+Compilation performs the profunctor interpretation once.  The returned
+function can be called with many sources, but changing an operation's
+FN, VALUE, or MONOID requires another call to `lg-compile'.  Reviews
+and reversal are not compilable this way because their input determines
+the interpretation.  Every optic accepted by the corresponding ordinary
+operation, including custom optics, is supported."
+  (pcase operation
+    ((or 'over 'set)
+     (let* ((args (lg--compile-required-arguments operation arguments 1))
+            (fn (if (eq operation 'over)
+                    (car args)
+                  (let ((value (car args)))
+                    (lambda (_focus) value)))))
+       (lg--compile-over optic fn)))
+    ((or 'iover 'iset)
+     (let* ((args (lg--compile-required-arguments operation arguments 1))
+            (fn (if (eq operation 'iover)
+                    (car args)
+                  (let ((value (car args)))
+                    (lambda (_index _focus) value)))))
+       (lg--compile-iover optic fn)))
+    ('to-list
+     (lg--compile-required-arguments operation arguments 0)
+     (lg--compile-to-list optic))
+    ('ito-list
+     (lg--compile-required-arguments operation arguments 0)
+     (lg--compile-ito-list optic))
+    ((or 'preview 'view 'has)
+     (lg--compile-required-arguments operation arguments 0)
+     (let ((collect (lg--compile-to-list optic)))
+       (pcase operation
+         ('preview
+          (lambda (source)
+            (let ((focuses (funcall collect source)))
+              (if focuses (lg-just (car focuses)) lg-nothing))))
+         ('view
+          (lambda (source)
+            (let ((focuses (funcall collect source)))
+              (if focuses
+                  (car focuses)
+                (signal 'lg-no-focus (list optic source))))))
+         ('has
+          (lambda (source)
+            (not (null (funcall collect source))))))))
+    ((or 'ipreview 'iview 'ihas)
+     (lg--compile-required-arguments operation arguments 0)
+     (let ((collect (lg--compile-ito-list optic)))
+       (pcase operation
+         ('ipreview
+          (lambda (source)
+            (let ((focuses (funcall collect source)))
+              (if focuses (lg-just (car focuses)) lg-nothing))))
+         ('iview
+          (lambda (source)
+            (let ((focuses (funcall collect source)))
+              (if focuses
+                  (car focuses)
+                (signal 'lg-no-focus (list optic source))))))
+         ('ihas
+          (lambda (source)
+            (not (null (funcall collect source))))))))
+    ((or 'fold-map 'ifold-map)
+     (let ((args (lg--compile-required-arguments operation arguments 2)))
+       (if (eq operation 'fold-map)
+           (lg--compile-fold-map optic (car args) (cadr args))
+         (lg--compile-ifold-map optic (car args) (cadr args)))))
+    (_ (error "Unsupported lg-compile operation: %S" operation))))
+
 (defun lg-iview-non-nil (optic source)
   "View indexed focus with OPTIC in SOURCE and require non-nil value."
   (let ((indexed-value (lg-iview optic source)))

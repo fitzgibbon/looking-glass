@@ -53,6 +53,33 @@ Core operators:
 - ~lg-over~, ~lg-set~
 - ~lg-to-list-of~, ~lg-preview-or~
 
+* Compiling a repeated operation
+
+~lg-compile~ interprets an optic once and returns a function to run over
+many sources.  It is useful when the same optic and operation are reused;
+the returned function remains pure.  It supports every optic accepted by
+the corresponding ordinary operation, including custom optics built with
+the public constructors.
+
+#+begin_src emacs-lisp
+(let ((increment-first (lg-compile lg-car 'over #'1+)))
+  (mapcar increment-first '((1 . 2) (10 . 20))))
+;; => ((2 . 2) (11 . 20))
+#+end_src
+
+The operation determines the remaining arguments and result:
+
+- ~over~ takes ~FN~; ~set~ takes ~VALUE~;
+- ~to-list~, ~preview~, ~view~, and ~has~ take no more arguments;
+- ~fold-map~ takes ~MONOID~ and ~FN~;
+- indexed variants are ~iover~, ~iset~, ~ito-list~, ~ipreview~, ~iview~,
+  ~ihas~, and ~ifold-map~.
+
+For example, ~(lg-compile lg-list 'fold-map lg-monoid-sum #'identity)~
+returns a function from source to sum.  A changed function, value, or monoid
+requires a newly compiled function.  Reviews and reversals are not supported
+because their varying input selects the interpretation.
+
 * Nil semantics and disambiguation
 
 Preview APIs return tagged maybe values:

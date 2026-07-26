@@ -55,6 +55,13 @@ CLOSED: [2026-07-25]
 - [X] FCR-047 filtered-family law caveat; laws.org scoped.
 - [X] FCR-048..056 contract docs, descriptive default methods, debt.
 
+* DONE Compile reusable operation runners
+CLOSED: [2026-07-27]
+- [X] Add ~lg-compile~ for reusable unindexed and indexed update, collection,
+  preview, view, and fold-map runners while preserving custom optics.
+- [X] Test compiled runners against ordinary operations and document their
+  operation-specific arguments and limitations.
+
 * TODO Future work
 - [ ] Forget-style short-circuit for ~lg-preview~ (folds currently visit
   all focuses; noted under FCR-024).
