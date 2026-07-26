@@ -25,14 +25,16 @@ jobs:
         run: |
           emacs -Q --batch -L . \
             --eval '(setq byte-compile-error-on-warn t)' \
-            -f batch-byte-compile looking-glass.el looking-glass-regex.el
+            -f batch-byte-compile looking-glass.el looking-glass-regex.el \
+              looking-glass-json-schema.el
 
       - name: Checkdoc
         run: |
           output="$(emacs -Q --batch --eval \
             '(progn (require (quote checkdoc))
                     (setq checkdoc-diagnostic-buffer "*warn*")
-                    (dolist (f (list "looking-glass.el" "looking-glass-regex.el"))
+                    (dolist (f (list "looking-glass.el" "looking-glass-regex.el"
+                                     "looking-glass-json-schema.el"))
                       (checkdoc-file f))
                     (with-current-buffer "*warn*" (princ (buffer-string))))' 2>&1)"
           echo "$output"

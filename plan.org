@@ -62,6 +62,17 @@ CLOSED: [2026-07-27]
 - [X] Test compiled runners against ordinary operations and document their
   operation-specific arguments and limitations.
 
+* DONE Add looking-glass-json-schema package
+CLOSED: [2026-07-27]
+- [X] Define a generated optic-set API for JSON text and native parsed values.
+- [X] Generate optics for object properties, homogeneous arrays, tuples,
+  schema combiners, and local references across Jansson representations.
+- [X] Add tests for raw and parsed inputs, every supported native object/array
+  representation, escaped paths, optional properties, tuples, and references.
+- [X] Add an Emacs manual, README examples, package recipe, and build/CI wiring.
+- [X] Run tests, byte compilation, checkdoc, and manual builds.
+- [X] Commit and push the completed package.
+
 * TODO Future work
 - [ ] Forget-style short-circuit for ~lg-preview~ (folds currently visit
   all focuses; noted under FCR-024).

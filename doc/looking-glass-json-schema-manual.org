@@ -1,0 +1,133 @@
+#+TITLE: looking-glass-json-schema Manual
+#+SUBTITLE: Generate optics from JSON Schema
+#+AUTHOR: looking-glass contributors
+#+TEXINFO_FILENAME: looking-glass-json-schema.info
+#+TEXINFO_DIR_CATEGORY: Emacs
+#+TEXINFO_DIR_TITLE: looking-glass-json-schema: (looking-glass-json-schema). Schema-generated optics.
+#+TEXINFO_DIR_DESC: Generate pure optics for JSON Schema instance locations.
+#+OPTIONS: toc:3 num:t
+
+* Top
+
+~looking-glass-json-schema~ turns a JSON Schema into an addressable collection
+of optics.  Each discovered instance location gets one optic for parsed Emacs
+values and another for raw JSON text.
+
+#+begin_src emacs-lisp
+(require 'looking-glass-json-schema)
+#+end_src
+
+The package generates structural access; it does not validate instances or
+coerce values according to ~type~, ~format~, or other validation keywords.
+
+* Generate and use an optic set
+
+Pass raw schema JSON or a schema already parsed into a hash table, alist, or
+plist to ~lg-json-schema-generate~:
+
+#+begin_src emacs-lisp
+(let* ((schema
+        "{\"properties\":{\"account\":{\"properties\":{\"email\":{\"type\":\"string\"}}}}}")
+       (set (lg-json-schema-generate schema))
+       (email (lg-json-schema-optic set "/account/email" 'text)))
+  (lg-over email #'downcase
+           "{\"account\":{\"email\":\"ADA@EXAMPLE.COM\"}}"))
+;; => "{\"account\":{\"email\":\"ada@example.com\"}}"
+#+end_src
+
+~lg-json-schema-paths~ returns the sorted paths in a set.  The empty string is
+the root path.  Paths use JSON Pointer escaping: =/= in a property name becomes
+=~1=, and =~= becomes =~0=.
+
+~lg-json-schema-optic~ accepts a set, a path, and an optional input kind:
+
+- ~parsed~ (the default) returns an optic over native Emacs values;
+- ~text~ returns the same location composed after a JSON parser prism.
+
+Unknown paths and input kinds signal an error.
+
+* Parsed representations
+
+The keyword arguments to ~lg-json-schema-generate~ describe instance values:
+
+#+begin_src emacs-lisp
+(lg-json-schema-generate schema
+                         :object-type 'plist
+                         :array-type 'array
+                         :null-object :null
+                         :false-object lg-false)
+#+end_src
+
+They follow ~lg-json-parse-with~:
+
+- ~:object-type~ is ~hash-table~, ~alist~, or ~plist~;
+- ~:array-type~ is ~array~ (vectors) or ~list~;
+- ~:null-object~ and ~:false-object~ select distinct sentinels.
+
+Alist/plist objects cannot be combined with list arrays.  Any list-backed
+representation needs a non-nil null sentinel so empty arrays, empty objects,
+and null remain distinguishable.  The generator rejects invalid combinations
+when it builds the text optics.
+
+Property names are adapted to the selected native representation: strings for
+hash tables, ordinary symbols for alists, and keywords for plists.
+
+#+begin_src emacs-lisp
+(let* ((schema '(:properties (:profile
+                              (:properties (:visits (:type "number"))))))
+       (set (lg-json-schema-generate schema
+                                     :object-type 'plist
+                                     :null-object :null))
+       (visits (lg-json-schema-optic set "/profile/visits")))
+  (lg-over visits #'1+ '(:profile (:visits 9))))
+;; => (:profile (:visits 10))
+#+end_src
+
+All generated transforms are pure.  Hash tables and containing structures are
+copied along the updated path; source values are not mutated.
+
+* Generated locations
+
+The generator follows these structural keywords:
+
+- ~properties~ creates one existing-property affine traversal per named member;
+- schema-valued ~items~ creates an element traversal at a ~*~ path token;
+- ~prefixItems~ creates positional optics at ~0~, ~1~, and so on;
+- array-valued ~items~ is also accepted for older tuple schemas;
+- ~allOf~, ~anyOf~, and ~oneOf~ contribute locations from every branch;
+- local ~$ref~ values such as ~#/$defs/address~ are resolved.
+
+For example, ~/rows/*/name~ traverses every existing ~name~ member in ~rows~:
+
+#+begin_src emacs-lisp
+(let* ((schema
+        '(:properties
+          (:rows (:items (:properties (:name (:type "string")))))))
+       (set (lg-json-schema-generate schema
+                                     :object-type 'plist
+                                     :null-object :null))
+       (names (lg-json-schema-optic set "/rows/*/name")))
+  (lg-over names #'upcase
+           '(:rows [(:name "Ada") (:name "Grace")])))
+;; => (:rows [(:name "ADA") (:name "GRACE")])
+#+end_src
+
+Required and optional properties use the same existing-property optic.  On
+conforming data, a required property is present.  On nonconforming data, a
+missing property has no focus and an update leaves the source unchanged.
+
+* References and limits
+
+Only local references are expanded.  External references signal an error
+because generation does not perform network or file access.  A recursive
+reference is expanded once beneath the location where it is encountered; the
+next repeated reference remains as a generated boundary path.  This keeps the
+result finite while still exposing one useful recursive level.
+
+Keywords that describe open-ended names, such as ~patternProperties~ and
+~additionalProperties~, cannot produce a finite list of named paths and are
+not expanded.  Conditional and validation-only keywords are likewise ignored.
+
+Text optics parse and serialize through ~lg-json-parse-with~, so successful
+writes emit canonical JSON formatting rather than preserving whitespace or
+member formatting from the source text.

@@ -9,7 +9,9 @@
                raw-args))
        (out-dir (expand-file-name (or (car args) "build/manuals/texi")))
        (manuals '(("doc/looking-glass-manual.org" . "looking-glass.texi")
-                   ("doc/looking-glass-regex-manual.org" . "looking-glass-regex.texi"))))
+                   ("doc/looking-glass-regex-manual.org" . "looking-glass-regex.texi")
+                   ("doc/looking-glass-json-schema-manual.org"
+                    . "looking-glass-json-schema.texi"))))
   (setq command-line-args-left nil)
   (make-directory out-dir t)
   (dolist (manual manuals)

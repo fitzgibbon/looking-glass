@@ -26,6 +26,23 @@ Compositional profunctor optics for Emacs Lisp.
 #+RESULTS:
 : {"user":{"name":"ADA"},"active":true}
 
+** Generate reusable edits from JSON Schema
+
+#+begin_src emacs-lisp
+(require 'looking-glass-json-schema)
+
+(let* ((schema
+        "{\"properties\":{\"users\":{\"items\":{\"properties\":{\"email\":{\"type\":\"string\"}}}}}}")
+       (optics (lg-json-schema-generate schema))
+       (emails (lg-json-schema-optic optics "/users/*/email" 'text)))
+  (lg-over emails #'downcase
+           "{\"users\":[{\"email\":\"ADA@EXAMPLE.COM\"},{\"email\":\"G@EXAMPLE.COM\"}]}"))
+;; => "{\"users\":[{\"email\":\"ada@example.com\"},{\"email\":\"g@example.com\"}]}"
+#+end_src
+
+The same generated set also contains optics for parsed hash-table, alist, or
+plist values.
+
 ** Bulk rewrite only capture groups
 
 #+begin_src emacs-lisp
@@ -64,12 +81,14 @@ Compositional profunctor optics for Emacs Lisp.
 
 - ~looking-glass.el~: pure optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
 - ~looking-glass-regex.el~: pure regex and text traversals (~lg-regex-all~, ~lg-lined~, ~lg-utf8~).
+- ~looking-glass-json-schema.el~: schema-generated optics for parsed values and raw JSON text.
 - ~laws.org~: law expectations and nil-disambiguation notes.
 
 * Documentation
 
 - Core manual: ~doc/looking-glass-manual.org~
 - Regex manual: ~doc/looking-glass-regex-manual.org~
+- JSON Schema manual: ~doc/looking-glass-json-schema-manual.org~
 
 These are org-mode manuals intended for Texinfo/Info export.
 
@@ -96,6 +115,10 @@ here. The intended recipes select each package's files explicitly:
 (looking-glass-regex :fetcher github :repo "fitzgibbon/looking-glass"
                      :branch "melpa-release"
                      :files ("looking-glass-regex.el" "looking-glass-regex.info"))
+(looking-glass-json-schema :fetcher github :repo "fitzgibbon/looking-glass"
+                           :branch "melpa-release"
+                           :files ("looking-glass-json-schema.el"
+                                   "looking-glass-json-schema.info"))
 #+end_src
 
 package-build generates the ~dir~ entry from the ~.info~ files, which is
