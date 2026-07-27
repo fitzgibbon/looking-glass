@@ -73,6 +73,18 @@ CLOSED: [2026-07-27]
 - [X] Run tests, byte compilation, checkdoc, and manual builds.
 - [X] Commit and push the completed package.
 
+* DONE Replace JSON Schema path optics with compositional converters
+CLOSED: [2026-07-27]
+- [X] Define a whole-document converter API with reusable definition converters.
+- [X] Compile scalar formats, objects, arrays, tuples, references, combiners, and
+  tagged unions into recursively composed pure conversion optics.
+- [X] Replace the existing JSON Schema tests with conversion, review,
+  representation, recursion, union, and law-oriented coverage.
+- [X] Rewrite the README and JSON Schema manual around external JSON parsing and
+  whole-document semantic conversion.
+- [X] Run tests, byte compilation, checkdoc, and manual builds.
+- [X] Commit and push the replacement design.
+
 * TODO Future work
 - [ ] Forget-style short-circuit for ~lg-preview~ (folds currently visit
   all focuses; noted under FCR-024).

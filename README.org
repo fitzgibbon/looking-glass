@@ -26,22 +26,31 @@ Compositional profunctor optics for Emacs Lisp.
 #+RESULTS:
 : {"user":{"name":"ADA"},"active":true}
 
-** Generate reusable edits from JSON Schema
+** Convert a complete schema before editing it
 
 #+begin_src emacs-lisp
 (require 'looking-glass-json-schema)
 
 (let* ((schema
-        "{\"properties\":{\"users\":{\"items\":{\"properties\":{\"email\":{\"type\":\"string\"}}}}}}")
-       (optics (lg-json-schema-generate schema))
-       (emails (lg-json-schema-optic optics "/users/*/email" 'text)))
-  (lg-over emails #'downcase
-           "{\"users\":[{\"email\":\"ADA@EXAMPLE.COM\"},{\"email\":\"G@EXAMPLE.COM\"}]}"))
-;; => "{\"users\":[{\"email\":\"ada@example.com\"},{\"email\":\"g@example.com\"}]}"
+        "{\"properties\":{\"releases\":{\"items\":{\"properties\":{\"published\":{\"format\":\"date\"}}}}}}")
+       (converter
+        (lg-json-schema-converter (lg-json-schema-compile schema)))
+       (published
+        (lg-compose lg-json-parse converter
+                    (lg-ix "releases") lg-vector (lg-ix "published"))))
+  (lg-over published
+           (lambda (date)
+             (make-lg-json-schema-date
+              :year (1+ (lg-json-schema-date-year date))
+              :month (lg-json-schema-date-month date)
+              :day (lg-json-schema-date-day date)))
+           "{\"releases\":[{\"published\":\"2025-01-02\"}]}"))
+;; => "{\"releases\":[{\"published\":\"2026-01-02\"}]}"
 #+end_src
 
-The same generated set also contains optics for parsed hash-table, alist, or
-plist values.
+The schema compiler recursively converts the complete document.  Ordinary
+looking-glass optics then edit its semantic values, while review converts them
+back to JSON-native data.
 
 ** Bulk rewrite only capture groups
 
@@ -81,7 +90,7 @@ plist values.
 
 - ~looking-glass.el~: pure optic core, composition, folds, indexed optics, reviews, and law-aligned primitives.
 - ~looking-glass-regex.el~: pure regex and text traversals (~lg-regex-all~, ~lg-lined~, ~lg-utf8~).
-- ~looking-glass-json-schema.el~: schema-generated optics for parsed values and raw JSON text.
+- ~looking-glass-json-schema.el~: recursive semantic converters compiled from JSON Schema.
 - ~laws.org~: law expectations and nil-disambiguation notes.
 
 * Documentation
