@@ -60,10 +60,12 @@ membership.
   content).
 - JSON Schema conversion optics :: compiled converters are isos over
   schema-valid native values and semantic values accepted by every registered
-  format codec.  Built-in date-time reviews canonicalize offsets to UTC and
-  fractional-second spelling, so native round trips are lawful up to that
-  canonical representation.  Inputs outside the declared schema domain may
-  signal rather than satisfy iso laws.
+  format codec.  Built-in reviews canonicalize date/time offsets and fractions,
+  duration components, host and email domains, network addresses, URLs, UUIDs,
+  and Base64.  The regex codec supports a documented ECMA-262 subset and
+  retains its source for exact review.  Native round trips are therefore lawful
+  up to each codec's documented canonical representation; inputs outside the
+  declared schema or supported regex domain may signal.
 - ~lg-utf8~ :: preview succeeds only for unibyte strings that decode to
   UTF-8 text containing no raw-byte characters and re-encode to the same
   bytes. Within that domain both prism laws hold, including for

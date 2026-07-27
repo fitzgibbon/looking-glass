@@ -85,6 +85,21 @@ CLOSED: [2026-07-27]
 - [X] Run tests, byte compilation, checkdoc, and manual builds.
 - [X] Commit and push the replacement design.
 
+* DONE Add the remaining standard JSON Schema semantic codecs
+CLOSED: [2026-07-27]
+- [X] Define semantic representations and canonical reviews for standard
+  formats, documenting where Emacs has no dedicated native type.
+- [X] Add codecs for time, duration, network addresses, URI/IRI references,
+  email, hostnames, UUID, regex, JSON Pointer, relative JSON Pointer, and URI
+  templates, plus Base64 content encoding.
+- [X] Preserve parser-provided boolean/null/integer representations without
+  duplicating conversions JSON already performs.
+- [X] Add focused round-trip, validation, composition, and matching tests.
+- [X] Update the README, manual, and law notes with representation choices and
+  dialect/canonicalisation caveats.
+- [X] Run tests, byte compilation, checkdoc, manual builds, and manual examples.
+- [X] Commit and push the completed codec set.
+
 * TODO Future work
 - [ ] Forget-style short-circuit for ~lg-preview~ (folds currently visit
   all focuses; noted under FCR-024).

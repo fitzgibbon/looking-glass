@@ -226,6 +226,129 @@
     (should-error
      (lg-view lg-json-schema-date-time-iso "2025-01-01T25:00:00Z"))))
 
+(ert-deftest lg-json-schema-time-and-duration-codecs ()
+  (let* ((time
+          (lg-view lg-json-schema-time-iso "12:34:56.125+01:30"))
+         (duration
+          (lg-view lg-json-schema-duration-iso "P1Y2M3DT4H5M6.125S")))
+    (should (equal (lg-review lg-json-schema-time-iso time)
+                   "12:34:56.125+01:30"))
+    (should (equal (lg-review lg-json-schema-duration-iso duration)
+                   "P1Y2M3DT4H5M6.125S"))
+    (should-error (lg-view lg-json-schema-time-iso "25:00:00Z"))
+    (should-error (lg-view lg-json-schema-duration-iso "P"))))
+
+(ert-deftest lg-json-schema-network-address-codecs ()
+  (let ((ipv4 (lg-view lg-json-schema-ipv4-iso "192.0.2.1"))
+        (ipv6 (lg-view lg-json-schema-ipv6-iso "2001:db8::1")))
+    (should (equal ipv4 [192 0 2 1]))
+    (should (equal ipv6 [8193 3512 0 0 0 0 0 1]))
+    (should (equal (lg-review lg-json-schema-ipv4-iso ipv4) "192.0.2.1"))
+    (should (equal (lg-review lg-json-schema-ipv6-iso ipv6)
+                   "2001:db8:0:0:0:0:0:1"))
+    (should-error (lg-view lg-json-schema-ipv4-iso "999.0.0.1"))
+    (should-error (lg-view lg-json-schema-ipv6-iso "2001::db8::1"))))
+
+(ert-deftest lg-json-schema-uri-and-reference-codecs ()
+  (let ((uri (lg-view lg-json-schema-uri-iso
+                      "https://example.com/a?x=1#part"))
+        (reference (lg-view lg-json-schema-uri-reference-iso "../a?x=1")))
+    (should (url-p uri))
+    (should (equal (lg-review lg-json-schema-uri-iso uri)
+                   "https://example.com/a?x=1#part"))
+    (should (equal (lg-review lg-json-schema-uri-reference-iso reference)
+                   "../a?x=1"))
+    (should-error (lg-view lg-json-schema-uri-iso "../relative"))))
+
+(ert-deftest lg-json-schema-email-and-hostname-codecs ()
+  (let ((email (lg-view lg-json-schema-email-iso "alice@Example.COM"))
+        (idn-email
+         (lg-view lg-json-schema-idn-email-iso
+                  "user@xn--r8jz45g.xn--zckzah"))
+        (hostname (lg-view lg-json-schema-hostname-iso "Example.COM"))
+        (idn-hostname
+         (lg-view lg-json-schema-idn-hostname-iso
+                  "xn--r8jz45g.xn--zckzah")))
+    (should (equal (lg-json-schema-email-local email) "alice"))
+    (should (equal (lg-review lg-json-schema-email-iso email)
+                   "alice@example.com"))
+    (should (equal (lg-json-schema-email-domain idn-email) "例え.テスト"))
+    (should (equal (lg-review lg-json-schema-idn-email-iso idn-email)
+                   "user@xn--r8jz45g.xn--zckzah"))
+    (should (equal hostname ["example" "com"]))
+    (should (equal idn-hostname ["例え" "テスト"]))))
+
+(ert-deftest lg-json-schema-uuid-and-base64-codecs ()
+  (let* ((uuid-text "550e8400-e29b-41d4-a716-446655440000")
+         (uuid (lg-view lg-json-schema-uuid-iso uuid-text))
+         (bytes (lg-view lg-json-schema-base64-iso "aGVsbG8=")))
+    (should (= (length uuid) 16))
+    (should-not (multibyte-string-p uuid))
+    (should (equal (lg-review lg-json-schema-uuid-iso uuid) uuid-text))
+    (should (equal bytes "hello"))
+    (should-not (multibyte-string-p bytes))
+    (should (equal (lg-review lg-json-schema-base64-iso bytes) "aGVsbG8="))))
+
+(ert-deftest lg-json-schema-regex-codec-produces-matchable-emacs-regex ()
+  (let* ((source "^(cat|dog)+\\d{2}$")
+         (regex (lg-view lg-json-schema-regex-iso source)))
+    (should (lg-json-schema-regex-match-p regex "catdog42"))
+    (should-not (lg-json-schema-regex-match-p regex "catbird42"))
+    (should (equal (lg-review lg-json-schema-regex-iso regex) source))
+    (should-error (lg-view lg-json-schema-regex-iso "(?<=id=)\\d+"))
+    (should-error (lg-view lg-json-schema-regex-iso "\\p{Letter}+"))))
+
+(ert-deftest lg-json-schema-pointer-and-template-codecs ()
+  (let ((pointer
+         (lg-view lg-json-schema-json-pointer-iso "/a~1b/~0name"))
+        (relative
+         (lg-view lg-json-schema-relative-json-pointer-iso "2/items/0"))
+        (template
+         (lg-view lg-json-schema-uri-template-iso
+                  "https://example.com/{user}/{id}")))
+    (should (equal (lg-json-schema-pointer-tokens pointer)
+                   '("a/b" "~name")))
+    (should (equal (lg-review lg-json-schema-json-pointer-iso pointer)
+                   "/a~1b/~0name"))
+    (should (= (lg-json-schema-relative-pointer-up relative) 2))
+    (should (equal
+             (lg-review lg-json-schema-relative-json-pointer-iso relative)
+             "2/items/0"))
+    (should (equal (lg-json-schema-uri-template-variables template)
+                   '("user" "id")))
+    (should (equal (lg-review lg-json-schema-uri-template-iso template)
+                   "https://example.com/{user}/{id}"))))
+
+(ert-deftest lg-json-schema-compiler-applies-formats-and-content-encoding ()
+  (let* ((schema
+          '(:properties
+            (:address (:format "ipv4")
+             :pattern (:format "regex")
+             :payload (:contentEncoding "base64"))))
+         (set (lg-json-schema-compile schema :object-type 'plist))
+         (converter (lg-json-schema-converter set))
+         (native '(:address "192.0.2.1"
+                   :pattern "^id=\\d+$"
+                   :payload "aGVsbG8="))
+         (semantic (lg-view converter native)))
+    (should (equal (plist-get semantic :address) [192 0 2 1]))
+    (should (lg-json-schema-regex-match-p
+             (plist-get semantic :pattern) "id=42"))
+    (should (equal (plist-get semantic :payload) "hello"))
+    (should (equal (lg-review converter semantic) native))))
+
+(ert-deftest lg-json-schema-does-not-duplicate-json-primitive-conversion ()
+  (should (equal (json-parse-string "[true,false,null]" :array-type 'list)
+                 '(t :false :null)))
+  (let* ((schema
+          '(:prefixItems
+            [(:type "boolean") (:type "boolean") (:type "null")]))
+         (set (lg-json-schema-compile schema :array-type 'list
+                                     :null-object :null
+                                     :false-object :false))
+         (value '(t :false :null)))
+    (should (equal (lg-view (lg-json-schema-converter set) value) value))))
+
 (ert-deftest lg-json-schema-identity-and-errors ()
   (let* ((set (lg-json-schema-compile '(:properties (:name (:type "string")))
                                       :object-type 'plist))

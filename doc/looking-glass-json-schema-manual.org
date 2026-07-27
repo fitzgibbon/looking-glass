@@ -218,21 +218,98 @@ or, when no such predicate exists, the first declared alternative.
 
 * Built-in formats
 
-~lg-json-schema-default-formats~ contains:
+~lg-json-schema-default-formats~ contains semantic codecs for the standard
+formats below.  Reviews choose one canonical spelling where the source syntax
+allows equivalent alternatives.
 
-- ~date~: full-date text to ~lg-json-schema-date~ records via
-  ~lg-json-schema-date-iso~;
-- ~date-time~: RFC 3339 text to Emacs time values via
-  ~lg-json-schema-date-time-iso~.
+** Date and time
 
-Reviews emit canonical text.  Date-time values are emitted in UTC with a ~Z~
-offset and only the required fractional-second digits, so original offset and
-lexical choices are not preserved.  Emacs time values retain up to twelve
-fractional digits; finer source precision is truncated to that limit.
+- ~date~ becomes an ~lg-json-schema-date~ record.  Emacs has no dedicated,
+  typed date-only value, and using an instant would invent a timezone.
+- ~date-time~ becomes an Emacs time value.  Review emits UTC with a ~Z~ offset.
+- ~time~ becomes an Emacs decoded-time list with hour, minute, second, and zone.
+- ~duration~ becomes a decoded-time-style list whose year, month, day, hour,
+  minute, and second slots are duration components.
 
-Unknown formats are identity conversions.  Formats are annotations unless the
-active JSON Schema dialect and validator assert them; callers are responsible
-for matching conversion assumptions to validation policy.
+Date-time values retain up to twelve fractional digits; finer source precision
+is truncated to that Emacs time limit.  Time and duration reviews remove
+unnecessary fractional zeroes.
+
+** Network and resource identifiers
+
+- ~ipv4~ becomes a four-element Emacs network-address vector.
+- ~ipv6~ becomes an eight-element Emacs network-address vector.
+- ~uri~ and ~iri~ become Emacs ~url~ structures and require a scheme.
+- ~uri-reference~ and ~iri-reference~ become ~url~ structures and permit
+  relative references.
+
+URI and IRI share Emacs's Unicode-capable URL representation.  Reviews use
+~url-recreate-url~.  IPv6 review currently emits all eight words rather than
+preserving source compression.
+
+** Names and identifiers
+
+- ~email~ becomes ~lg-json-schema-email~, with separate local and domain fields.
+- ~idn-email~ uses the same record but decodes a Punycode domain to Unicode.
+- ~hostname~ becomes a vector of lowercase labels.
+- ~idn-hostname~ becomes a vector of lowercase Unicode labels.
+- ~uuid~ becomes a sixteen-byte unibyte string; review emits lowercase,
+  hyphenated UUID text.
+
+Email uses ~mail-extract-address-components~ for mailbox parsing.  A custom
+record is used because Emacs has no dedicated email-address type.  IDN reviews
+encode domains back to Punycode.
+
+** Regex, pointers, and templates
+
+- ~regex~ becomes ~lg-json-schema-regex~, retaining the ECMA-262 source and a
+  translated Emacs regexp.
+- ~json-pointer~ becomes ~lg-json-schema-pointer~ with decoded string tokens.
+- ~relative-json-pointer~ becomes ~lg-json-schema-relative-pointer~ with an
+  upward count, optional index query, and decoded tokens.
+- ~uri-template~ becomes ~lg-json-schema-uri-template~, retaining source text
+  and the referenced variable names.
+
+Use a converted regex directly with the matching helper:
+
+#+begin_src emacs-lisp
+(let ((regex
+       (lg-view lg-json-schema-regex-iso "^(cat|dog)+\\d{2}$")))
+  (list (lg-json-schema-regex-match-p regex "catdog42")
+        (lg-json-schema-regex-match-p regex "catbird42")))
+;; => (t nil)
+#+end_src
+
+JSON Schema regex uses ECMA-262 syntax, not Emacs syntax.  The translator
+supports ordinary groups, noncapturing groups, lookahead, alternation,
+quantifiers, character classes, numeric backreferences, and the common
+~\\d~, ~\\w~, and ~\\s~ classes.  Unsupported constructs such as lookbehind,
+named groups, and Unicode property escapes signal rather than silently
+producing a different regexp.  The wrapper retains the original source, so
+review does not attempt to reconstruct ECMA-262 text from the Emacs regexp.
+
+URI-template conversion extracts variable names but does not implement RFC
+6570 expansion; the source is retained for exact review.
+
+** Encoded content
+
+A string node with ~contentEncoding: base64~ uses
+~lg-json-schema-base64-iso~ and becomes an unibyte string.  Review emits
+canonical Base64 without line breaks.
+
+#+begin_src emacs-lisp
+(let* ((set (lg-json-schema-compile
+             '(:properties (:payload (:contentEncoding "base64")))
+             :object-type 'plist))
+       (converter (lg-json-schema-converter set)))
+  (lg-view converter '(:payload "aGVsbG8=")))
+;; => (:payload "hello") with an unibyte payload
+#+end_src
+
+Unknown formats and content encodings are identity conversions.  Formats are
+annotations unless the active JSON Schema dialect and validator assert them;
+callers are responsible for matching conversion assumptions to validation
+policy.
 
 * Custom format optics
 
@@ -268,6 +345,13 @@ Because the schema identifies whether each node is an object or array, the
 converter can support list arrays alongside alist or plist objects.  Parsing
 and serialization choices remain subject to the constraints of the parser
 optic the caller composes around it.
+
+Native ~json-parse-string~ always uses ~t~ for true and defaults to ~:false~ and
+~:null~ for false and null; those sentinels can be configured.  The
+looking-glass parsing prism instead normalizes booleans to ~lg-true~ and
+~lg-false~ and uses its configured null sentinel.  The schema converter does
+not convert these primitive values again.  ~:null-object~ and ~:false-object~
+only tell union dispatch how to recognize their declared JSON types.
 
 All transformations return new values.  Hash tables and containing values are
 copied along converted branches; input data is not mutated.

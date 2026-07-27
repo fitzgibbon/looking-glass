@@ -50,7 +50,9 @@ Compositional profunctor optics for Emacs Lisp.
 
 The schema compiler recursively converts the complete document.  Ordinary
 looking-glass optics then edit its semantic values, while review converts them
-back to JSON-native data.
+back to JSON-native data.  Default codecs cover dates and times, durations,
+network addresses, URLs, email and host names, UUIDs, regexes, JSON Pointers,
+URI templates, and Base64 content.
 
 ** Bulk rewrite only capture groups
 
